@@ -39,7 +39,7 @@ def main(filename):
             routerclass.append(router)
             deviceslist[linelist[0]] = router
         elif linelist[0][0] == 'L':
-            link = Link(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4])
+            link = Link(env, linelist[0], linelist[3], linelist[4])
             linksclass.append(link)
             deviceslist[linelist[0]] = link
             edgeslist.append((linelist[0], linelist[1]))
@@ -53,7 +53,7 @@ def main(filename):
         d.add_port(elements[0], l)#hosts/routers add port of device id:L#, port is link
 
 
-    env.run()
+    env.run(until=5)
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()

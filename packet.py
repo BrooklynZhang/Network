@@ -21,8 +21,8 @@ class RadarPacket(Packet):
             router.send_to_all_expect(self, last_port_id)
 
     def host_receive_packet(self, host, last_port_id):
-        print('host receives the Radar packet ', host.host_id)
-        host.send_to_all_expect(EchoPacket(self.src_host_id, host.host_id, self.tag))
+        print('Host', host.host_id, 'receives the Radar packet from', self.src_host_id)
+        host.send(last_port_id, EchoPacket(self.src_host_id, host.host_id, self.tag))
 
     def link_receive_packet(self, link, last_port_id):
         link.send_to_all_expect(self, last_port_id)
@@ -43,7 +43,7 @@ class EchoPacket(Packet):
             router.send(router.backwardspacket[src_host_id], self)
 
     def host_receive_packet(self, host, last_port_id):
-        print('host receives the Echo packet ', host.host_id)
+        print('host', host.host_id, 'receives the Echo packet from', self.src_host_id)
 
     def link_receive_packet(self, link, last_port_id):
         link.send_to_all_expect(self, last_port_id)
@@ -57,7 +57,7 @@ class DataPacket(Packet):
         self.timestamp = timestamp
 
     def router_receive_packet(self, router, last_port_id):
-        router.send(self, router.look_up(self.dest_host_id))
+        router.send(router.look_up(self.dest_host_id), self)
 
     def host_receive_packet(self, host, last_port_id):
         acknum = host.get_packet(self.flow_id, self.packet_no)
@@ -74,7 +74,7 @@ class AckPacket(Packet):
         self.timestamp = timestamp
 
     def router_receive_packet(self, router, last_port_id):
-        router.send(self, router.look_up(self.dest_host_id))
+        router.send(router.look_up(self.dest_host_id), self)
 
     def host_receive_packet(self, host, last_port_id):
         host.handle_ack(self.flow_id, self.packet_no, self.timestamp)  ##Stamp

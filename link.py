@@ -1,10 +1,8 @@
 import simpy
 
 class Link(object):
-    def __init__(self, env, source_id, dest_id,  link_id, rate, delay):
+    def __init__(self, env, link_id, rate, delay):
         self.env = env
-        self.source_id = source_id
-        self.dest_id = dest_id
         self.link_id = link_id
         self.rate = rate
         self.delay = delay
@@ -22,8 +20,8 @@ class Link(object):
     def receive(self, packet, source_id):
         packet.link_receive_packet(self, source_id)
 
-    def send(self, dest_id, packet):
-        self.adj_ports[dest_id].receive(packet, self.link_id)
+    def send(self, dest_ports, packet):
+        self.adj_ports[dest_ports].receive(packet, self.link_id)
 
     def send_to_all_expect(self, packet, except_id=None):
         for ports in self.adj_ports:

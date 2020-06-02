@@ -21,8 +21,8 @@ class Router(object):
             raise Exception("ERROR: Duplicate port name")
         self.adj_ports[device_id] = device_port
 
-    def send(self, dest_id, packet):
-        self.adj_ports[dest_id].receive(packet, self.router_id)
+    def send(self, dest_ports, packet):
+        self.adj_ports[dest_ports].receive(packet, self.router_id)
 
     def send_to_all_expect(self, packet, except_id=None):
         for ports in self.adj_ports:
