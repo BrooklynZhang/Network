@@ -18,7 +18,11 @@ class Link(object):
         self.adj_ports[device_id] = device_port
 
     def receive(self, packet, source_id):
-        packet.link_receive_packet(self, source_id)
+        if packet.head == 'r':
+            self.send_to_all_expect(packet, source_id)
+
+        elif packet.head == 'e':
+            self.send_to_all_expect(packet, source_id)
 
     def send(self, dest_ports, packet):
         self.adj_ports[dest_ports].receive(packet, self.link_id)
@@ -27,3 +31,5 @@ class Link(object):
         for ports in self.adj_ports:
             if except_id is None or ports != except_id:
                 self.send(ports, packet)
+
+

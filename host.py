@@ -1,5 +1,5 @@
 import simpy
-from packet import RadarPacket
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket
 
 class Host(object):
 
@@ -34,4 +34,17 @@ class Host(object):
         self.adj_ports[dest_ports].receive(packet, self.host_id)
 
     def receive(self, packet, source_id):
-        packet.host_receive_packet(self, source_id)
+        if packet.head == 'r':
+            print('host', self.host_id, 'receive the data packet from', packet.src_host_id)
+            self.send(source_id, EchoPacket(packet.src_host_id, self.host_id, packet.tag))
+
+        elif packet.head == 'e':
+            print('host', self.host_id, 'receives the Echo packet from', packet.dest_host_id)
+
+        elif packet.head == 'd':
+            acknum = self.get_packet(packet.flow_id, packet.packet_no)
+            if acknum is not None:
+                self.send_except(AckPacket(packet.dest_host_id, packet.src_host_id, packet.flow_id, acknum, packet.timestamp))
+
+        elif packet.head == 'a':
+            self.handle_ack(packet.flow_id, packet.packet_no, packet.timestamp)

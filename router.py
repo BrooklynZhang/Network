@@ -30,7 +30,29 @@ class Router(object):
                 self.send(ports, packet)
 
     def receive(self, packet, source_id):
-        packet.router_receive_packet(self, source_id)
+        if packet.head == 'r':
+            src_host_id = packet.src_host_id
+            router_tag_table = self.radar_tag_table
+            tag = packet.tag
+            if src_host_id not in router_tag_table or router_tag_table[
+                src_host_id] < tag:  ## the radar message come here first time or need to update the information
+                router_tag_table[src_host_id] = tag
+                self.backwardspacket[src_host_id] = source_id
+                self.send_to_all_expect(packet, source_id)
+
+        elif packet.head == 'e':
+            src_host_id = packet.src_host_id
+            router_tag_table = self.radar_tag_table
+            tag = packet.tag
+            if src_host_id in router_tag_table and router_tag_table[src_host_id] == tag:
+                self.forwardspaceket[packet.dest_host_id] = source_id
+                self.send(self.backwardspacket[src_host_id], packet)
+
+        elif packet.head == 'd':
+            self.send(self.look_up(packet.dest_host_id), packet)
+
+        elif packet.head == 'a':
+            self.send(self.look_up(packet.dest_host_id), packet)
 
     def search_next_jump(self, dest_id):
         if dest_id in self.forwardspaceket:
