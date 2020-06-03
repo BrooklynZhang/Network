@@ -20,10 +20,10 @@ class Host(object):
     def get_host_id(self):
         return self.host_id
 
-    def add_port(self, device_id, device_port):
-        if device_id in self.adj_ports:
+    def add_port(self, source_id, source_port):
+        if source_id in self.adj_ports:
             raise Exception('Duplicate port name')
-        self.adj_ports[device_id] = device_port
+        self.adj_ports[source_id] = source_port
 
     def send_to_all_expect(self, packet, except_id=None):
         for ports in self.adj_ports:

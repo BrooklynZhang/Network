@@ -16,10 +16,10 @@ class Router(object):
     def get_host_id(self):
         return self.host_id
 
-    def add_port(self, device_id, device_port):
-        if device_id in self.adj_ports:
+    def add_port(self, source_id, source_port):
+        if source_id in self.adj_ports:
             raise Exception("ERROR: Duplicate port name")
-        self.adj_ports[device_id] = device_port
+        self.adj_ports[source_id] = source_port
 
     def send(self, dest_ports, packet):
         self.adj_ports[dest_ports].receive(packet, self.router_id)
