@@ -13,11 +13,9 @@ from ue import UE
 def main(filename):
     print("Setting up the Network")
 
-    hosts_class = []
     iabdonor_class = []
     iabnodes_class = []
     ue_class = []
-    router_class = []
     links_class = []
 
     devices_list = {}
@@ -39,7 +37,7 @@ def main(filename):
             donor = IAB_Donor(env, linelist[0])
             iabdonor_class.append(donor)
             devices_list[linelist[0]] = donor
-        elif linelist[0][0] == 'I':
+        elif linelist[0][0] == 'N':
             node = IAB_Node(env, linelist[0])
             iabnodes_class.append(node)
             devices_list[linelist[0]] = node

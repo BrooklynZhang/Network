@@ -47,6 +47,7 @@ class IAB_Node(object):
             tag = packet.tag
             if src_host_id in router_tag_table and router_tag_table[src_host_id] == tag:
                 self.forwardspaceket[packet.dest_host_id] = source_id
+                packet.add_path(self.node_id)
                 self.send(self.backwardspacket[src_host_id], packet)
 
         elif packet.head == 'd':

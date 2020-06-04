@@ -40,6 +40,8 @@ class UE(object):
 
         elif packet.head == 'e':
             print('UE', self.ue_id, 'receives the Echo packet from', packet.dest_host_id)
+            packet.add_path(self.ue_id)
+            print('UE: The Path of Echo packet is', packet.path)
 
         elif packet.head == 'd':
             acknum = self.get_packet(packet.flow_id, packet.packet_no)
