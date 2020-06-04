@@ -5,6 +5,7 @@ class Packet(object):
     def __init__(self):
         super(Packet, self).__init__()
 
+
 class RadarPacket(Packet):
     def __init__(self, src_host_id, tag):
         self.head = 'r'
@@ -18,6 +19,7 @@ class EchoPacket(Packet):
         self.src_host_id = src_host_id
         self.dest_host_id = dest_host_id
         self.tag = tag
+
 
 class DataPacket(Packet):
     def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp):  # src/dest host id, flow id, pack number, time stamp

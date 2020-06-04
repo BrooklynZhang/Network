@@ -2,21 +2,26 @@ import simpy
 import sys
 import argparse
 
-from router import Router
-from host import Host
 from link import Link
 from packet import DataPacket
+from flow import BaseFlow
+from iabdonor import IAB_Donor
+from iabnode import IAB_Node
+from ue import UE
 
 
 def main(filename):
     print("Setting up the Network")
 
-    hostsclass = []
-    routerclass = []
-    linksclass = []
+    hosts_class = []
+    iabdonor_class = []
+    iabnodes_class = []
+    ue_class = []
+    router_class = []
+    links_class = []
 
-    deviceslist = {}
-    edgeslist = []
+    devices_list = {}
+    edges_list = []
 
 
     env = simpy.Environment()
@@ -30,24 +35,30 @@ def main(filename):
             continue
         print(linelist[0])
 
-        if linelist[0][0] == 'H':
-            host = Host(env, linelist[0])
-            hostsclass.append(host)
-            deviceslist[linelist[0]] = host
-        elif linelist[0][0] == 'R':
-            router = Router(env, linelist[0])
-            routerclass.append(router)
-            deviceslist[linelist[0]] = router
+        if linelist[0][0] == 'D':
+            donor = IAB_Donor(env, linelist[0])
+            iabdonor_class.append(donor)
+            devices_list[linelist[0]] = donor
+        elif linelist[0][0] == 'I':
+            node = IAB_Node(env, linelist[0])
+            iabnodes_class.append(node)
+            devices_list[linelist[0]] = node
+        elif linelist[0][0] == 'U':
+            ue = UE(env, linelist[0])
+            ue_class.append(ue)
+            devices_list[linelist[0]] = ue
         elif linelist[0][0] == 'L':
             link = Link(env, linelist[0], linelist[3], linelist[4], linelist[4])
-            linksclass.append(link)
-            deviceslist[linelist[0]] = link
-            edgeslist.append((linelist[0], linelist[1]))
-            edgeslist.append((linelist[0], linelist[2]))
+            links_class.append(link)
+            devices_list[linelist[0]] = link
+            edges_list.append((linelist[0], linelist[1]))
+            edges_list.append((linelist[0], linelist[2]))
+        elif linelist[0][0] == 'F': #Flow Id / Source / Target / Data(MB) / Start Time
+            flow = BaseFlow
 
-    for elements in edgeslist:
-        l = deviceslist[elements[0]]
-        d = deviceslist[elements[1]]
+    for elements in edges_list:
+        l = devices_list[elements[0]]
+        d = devices_list[elements[1]]
 
         l.add_port(elements[1], d)#link add port of device id: H/R#, port is host or router class
         d.add_port(elements[0], l)#hosts/routers add port of device id:L#, port is link

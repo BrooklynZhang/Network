@@ -1,20 +1,21 @@
 import simpy
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket
+
+import simpy
 from packet import RadarPacket, EchoPacket
 
-class Router(object):
+class IAB_Node(object):
 
-    def __init__(self, env, router_id):
+    def __init__(self, env, node_id):
 
         self.env = env
-        self.router_id = router_id
+        self.node_id = node_id
         self.adj_ports = {}
         self.link_id_to_dest = {}
         self.radar_tag_table = {}
         self.backwardspacket = {}
         self.forwardspaceket = {}
 
-    def get_host_id(self):
-        return self.host_id
 
     def add_port(self, source_id, source_port):
         if source_id in self.adj_ports:
@@ -22,7 +23,7 @@ class Router(object):
         self.adj_ports[source_id] = source_port
 
     def send(self, dest_ports, packet):
-        self.adj_ports[dest_ports].receive(packet, self.router_id)
+        self.adj_ports[dest_ports].receive(packet, self.node_id)
 
     def send_to_all_expect(self, packet, except_id=None):
         for ports in self.adj_ports:
@@ -60,5 +61,3 @@ class Router(object):
         else:
             raise Exception("ERROR: Can not find forwarding path")
             return None
-
-

@@ -1,24 +1,24 @@
 import simpy
 from packet import RadarPacket, EchoPacket, DataPacket, AckPacket
 
-class Host(object):
+class UE(object):
 
-    def __init__(self, env, host_id):
+    def __init__(self, env, ue_id):
         self.env = env
-        self.host_id = host_id
+        self.ue_id = ue_id
         self.adj_ports = {}
         self.env.process(self.start_radar_routing())
 
     def start_radar_routing(self):
-        print("start radar routing", self.host_id)
+        print("start radar routing", self.ue_id)
         tag = 0
         while True:
-            self.send_to_all_expect(RadarPacket(self.host_id, tag))
+            self.send_to_all_expect(RadarPacket(self.ue_id, tag))
             yield self.env.timeout(5)
             tag += 1
 
     def get_host_id(self):
-        return self.host_id
+        return self.ue_id
 
     def add_port(self, source_id, source_port):
         if source_id in self.adj_ports:
@@ -31,15 +31,15 @@ class Host(object):
                 self.send(ports, packet)
 
     def send(self, dest_ports, packet):
-        self.adj_ports[dest_ports].receive(packet, self.host_id)
+        self.adj_ports[dest_ports].receive(packet, self.ue_id)
 
     def receive(self, packet, source_id):
         if packet.head == 'r':
-            print('host', self.host_id, 'receive the data packet from', packet.src_host_id)
-            self.send(source_id, EchoPacket(packet.src_host_id, self.host_id, packet.tag))
+            print('UE', self.ue_id, 'receive the data packet from', packet.src_host_id)
+            self.send(source_id, EchoPacket(packet.src_host_id, self.ue_id, packet.tag))
 
         elif packet.head == 'e':
-            print('host', self.host_id, 'receives the Echo packet from', packet.dest_host_id)
+            print('UE', self.ue_id, 'receives the Echo packet from', packet.dest_host_id)
 
         elif packet.head == 'd':
             acknum = self.get_packet(packet.flow_id, packet.packet_no)
