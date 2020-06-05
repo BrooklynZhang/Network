@@ -11,7 +11,7 @@ from ue import UE
 
 
 def main(filename):
-    print("Setting up the Network")
+    print("Setting Up The Network")
 
     iabdonor_class = []
     iabnodes_class = []
@@ -20,6 +20,7 @@ def main(filename):
 
     devices_list = {}
     edges_list = []
+    flow_list = []
 
 
     env = simpy.Environment()
@@ -31,7 +32,7 @@ def main(filename):
         linelist = line.strip().split()
         if not linelist:
             continue
-        print(linelist[0])
+        #print(linelist[0])
 
         if linelist[0][0] == 'D':
             donor = IAB_Donor(env, linelist[0])
@@ -46,13 +47,14 @@ def main(filename):
             ue_class.append(ue)
             devices_list[linelist[0]] = ue
         elif linelist[0][0] == 'L':
-            link = Link(env, linelist[0], linelist[3], linelist[4], linelist[4])
+            link = Link(env, linelist[0], linelist[3], linelist[4], linelist[5])
             links_class.append(link)
             devices_list[linelist[0]] = link
             edges_list.append((linelist[0], linelist[1]))
             edges_list.append((linelist[0], linelist[2]))
         elif linelist[0][0] == 'F': #Flow Id / Source / Target / Data(MB) / Start Time
-            flow = BaseFlow
+            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4])
+            flow_list.append(flow)
 
     for elements in edges_list:
         l = devices_list[elements[0]]
@@ -60,6 +62,10 @@ def main(filename):
 
         l.add_port(elements[1], d)#link add port of device id: H/R#, port is host or router class
         d.add_port(elements[0], l)#hosts/routers add port of device id:L#, port is link
+
+    for flow in flow_list:
+        print(devices_list[flow.src_id].ue_id)
+        devices_list[flow.src_id].add_flow(flow)
 
 
     env.run(until=5)

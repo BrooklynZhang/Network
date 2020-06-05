@@ -68,14 +68,14 @@ class BufferedCable(object):
             yield self.level[1].get(packet.size - 1)
             yield self.env.timeout(packet.size * 8 / (self.rate * 1.0E6))
             yield self.level[0].get(packet.size)
-            print('{:06f} buffer_diff g {} {}'.format(
+            '''print('{:06f} buffer_diff g {} {}'.format(
                 self.env.now,
                 self.link_id,
                 -1 * packet.size))
             print('{:06f} transmission {} {}'.format(
                 self.env.now,
                 self.link_id,
-                packet.size))
+                packet.size))'''
 
             self.env.process(self.delayfun(packet))
 
@@ -92,10 +92,10 @@ class BufferedCable(object):
             if req in ret:
                 self.level[1].put(packet.size)
                 self.packet_queue.append(packet)
-                print('{:06f} buffer_diff p {} {}'.format(
+                '''print('{:06f} buffer_diff p {} {}'.format(
                     self.env.now,
                     self.link_id,
-                    packet.size))
+                    packet.size))'''
             else:
                 if hasattr(packet, 'flow_id'):
                     print('{:06f} packet_loss {} {} {}'.format(

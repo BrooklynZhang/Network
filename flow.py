@@ -1,11 +1,14 @@
 import simpy
+from math import ceil
+from packet import DataPacket
 
 class BaseFlow(object):
-    def __init__(self, env, flow_id, src_id, dest_id, data_mb, start_s,state_constr, init_state):
+    def __init__(self, env, flow_id, src_id, dest_id, data_mb, start_s):
         self.env = env
         self.flow_id = flow_id
         self.src_id = src_id
         self.dest_id = dest_id
-        self.data_mb = data_mb
-        self.start_s = start_s
-        self.state_constra = state_constr
+        self.data_mb = float(data_mb)
+        self.start_s = float(start_s)
+        self.num_packets = int(ceil(float(data_mb) * 1.0E6 / 1024))
+        self.packet_pool = simpy.Store(env)

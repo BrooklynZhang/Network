@@ -42,23 +42,32 @@ class IAB_Node(object):
                 self.send_to_all_expect(packet, source_id)
 
         elif packet.head == 'e':
-            src_host_id = packet.src_host_id
+            dest_host_id = packet.dest_host_id
             router_tag_table = self.radar_tag_table
             tag = packet.tag
-            if src_host_id in router_tag_table and router_tag_table[src_host_id] == tag:
-                self.forwardspaceket[packet.dest_host_id] = source_id
+            if dest_host_id in router_tag_table and router_tag_table[dest_host_id] == tag:
+                self.forwardspaceket[packet.src_host_id] = source_id
                 packet.add_path(self.node_id)
-                self.send(self.backwardspacket[src_host_id], packet)
+                self.send(self.backwardspacket[dest_host_id], packet)
 
         elif packet.head == 'd':
-            self.send(self.look_up(packet.dest_host_id), packet)
+            self.send(self.search_next_jump_forward(packet.dest_host_id), packet)
 
         elif packet.head == 'a':
-            self.send(self.look_up(packet.dest_host_id), packet)
+            self.send(self.search_next_jump_backward(packet.dest_host_id), packet)
 
-    def search_next_jump(self, dest_id):
+    def search_next_jump_forward(self, dest_id):
         if dest_id in self.forwardspaceket:
             return self.forwardspaceket[dest_id]
         else:
-            raise Exception("ERROR: Can not find forwarding path")
+            raise Exception("ERROR: Can not find forwarding path", self.node_id)
             return None
+
+
+    def search_next_jump_backward(self, dest_id):
+        if dest_id in self.backwardspacket:
+            return self.backwardspacket[dest_id]
+        else:
+            raise Exception("ERROR: Can not find forwarding path", self.node_id)
+            return None
+
