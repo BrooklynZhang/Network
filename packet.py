@@ -47,5 +47,6 @@ class AckPacket(Packet):
         self.packet_no = packetnum
         self.timestamp = timestamp
         self.size = 64
+        self.reward = 100
 
 

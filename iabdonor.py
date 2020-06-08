@@ -3,22 +3,20 @@ from packet import RadarPacket, EchoPacket, DataPacket, AckPacket
 
 class IAB_Donor(object):
 
-    def __init__(self, env, donor_id):
+    def __init__(self, env, donor_id, algorithm):
         self.env = env
         self.donor_id = donor_id
         self.adj_ports = {}
+        self.algorithm = algorithm
         #self.env.process(self.start_radar_routing())
 
     def start_radar_routing(self):
-        print("start radar routing", self.donor_id)
+        print('IAB', self.donor_id, 'Start Radar Routing at', self.env.now)
         tag = 0
         while True:
             self.send_to_all_expect(RadarPacket(self.donor_id, tag))
             yield self.env.timeout(5)
             tag += 1
-
-    def get_host_id(self):
-        return self.donor_id
 
     def add_port(self, source_id, source_port):
         if source_id in self.adj_ports:
@@ -42,6 +40,9 @@ class IAB_Donor(object):
             print('IAB_DONOR', self.donor_id, 'receives the Echo packet from', packet.dest_host_id, 'at', self.env.now)
 
         elif packet.head == 'd':
+            if self.algorithm == 'q':
+                if packet.packet_no % 100 == 0:
+                    print('received the data packet', packet.packet_no)
             self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.flow_id, packet.packet_no, self.env.now))
 
         elif packet.head == 'a':
