@@ -7,9 +7,9 @@ class Link(object):
     def __init__(self, env, link_id, rate, delay, buf_size, algorithm):
         self.env = env
         self.link_id = link_id
-        self.rate = rate            #Mbps
-        self.delay = delay          #Milliseconds
-        self.buf_size = buf_size    #KB 2^10 Bytes
+        self.rate = rate  # Mbps
+        self.delay = delay  # Milliseconds
+        self.buf_size = buf_size  # KB 2^10 Bytes
         self.algorithm = algorithm
         self.adj_ports = {}
         self.buffercable = {}
@@ -22,7 +22,7 @@ class Link(object):
                 buffer = self.buffercable[key]
                 packetloss = buffer.total_packet_loss
                 if packetloss > 1:
-                    print("Link", self.link_id, "has total packet loss of", packetloss,'at time', self.env.now)
+                    print("Link", self.link_id, "has total packet loss of", packetloss, 'at time', self.env.now)
             yield self.env.timeout(1)
 
     def get_link_id(self):
@@ -30,7 +30,8 @@ class Link(object):
 
     def add_port(self, source_id, source_port):
         self.adj_ports[source_id] = source_port
-        self.buffercable[source_id] = BufferedCable(self, source_id)
+        self.buffercable[source_id] = BufferedCable(self,
+                                                    source_id)  # For each direction, add a bufferedcable to handle the data
 
     def receive(self, packet, source_id):
         self.buffercable[source_id].add_packet(packet)
@@ -51,13 +52,14 @@ class BufferedCable(object):
         self.link = link
         self.env = link.env
         self.link_id = link.link_id
-        self.rate = float(link.rate)                #Mbps
-        self.delay = float(link.delay)              #Milliseconds
-        self.buf_size = 1.0E3 * int(link.buf_size)   # KB to Bytes
+        self.rate = float(link.rate)  # Mbps
+        self.delay = float(link.delay)  # Milliseconds
+        self.buf_size = 1.0E3 * int(link.buf_size)  # KB to Bytes
         self.packet_loss = {}
         self.total_packet_loss = 0
-        self.packet_queue = collections.deque()     #Save the Data Packet
-        self.level = (
+        self.packet_queue = collections.deque()  # Save the Data Packet
+        self.level = (  # Modelling the production and consumption of a homogeneous,
+            # undifferentiated bulk.
             simpy.Container(self.env, capacity=self.buf_size),
             simpy.Container(self.env, capacity=self.buf_size)
         )
@@ -65,51 +67,33 @@ class BufferedCable(object):
         self.cable = simpy.Store(self.env)
         self.env.process(self.data_fill_cable())
 
-    def data_fill_cable(self):
-        while True:
+    def data_fill_cable(self):  # Sending Packet Mechanism
+        while True:  # Once the Queue has data packet, it will get it and send out.
             yield self.level[1].get(1)
             packet = self.packet_queue.popleft()
             yield self.level[1].get(packet.size - 1)
-            yield self.env.timeout(packet.size * 8 / (self.rate * 1.0E6))
+            yield self.env.timeout(packet.size * 8  # Sending time for each Packet, if the Rate is set to 20 Mbps,
+                                   / (self.rate * 1.0E6))  # a empty buffer link needs 0.0004 s to transfer a 1024 B
+            # Data Packet
             yield self.level[0].get(packet.size)
-            '''print('{:06f} buffer_diff g {} {}'.format(
-                self.env.now,
-                self.link_id,
-                -1 * packet.size))
-            print('{:06f} transmission {} {}'.format(
-                self.env.now,
-                self.link_id,
-                packet.size))'''
-
             self.env.process(self.delay_fun(packet))
 
     def delay_fun(self, packet):
-        yield self.env.timeout(self.delay / 1.0E3)
+        yield self.env.timeout(self.delay / 1.0E3)  # Each Data Packet will have a latency.
+                                                    # If all the conditions are same, long path will have more latency
         self.link.send_to_all_expect(packet, self.src_id)
 
     def add_packet(self, packet):
         self.env.process(self.add_packets(packet))
 
     def add_packets(self, packet):
-        with self.level[0].put(packet.size) as req:
-            ret = yield req | self.env.event().succeed()
+        with self.level[0].put(packet.size) as req:  #
+            ret = yield req | self.env.event().succeed()  # To trigger an event and mark it as successful,
+                            # As a shorthand for AnyOf
             if req in ret:
                 self.level[1].put(packet.size)
                 self.packet_queue.append(packet)
-                '''print('{:06f} buffer_diff p {} {}'.format(
-                    self.env.now,
-                    self.link_id,
-                    packet.size))'''
             else:
                 if hasattr(packet, 'flow_id'):
-                    '''print('{:06f} packet_loss {} {} {}'.format(
-                        self.env.now,
-                        self.link_id,
-                        packet.flow_id,
-                        packet.packet_no))'''
-                    #self.packet_loss[packet.flow_id] += 1
+                    # self.packet_loss[packet.flow_id] += 1
                     self.total_packet_loss += 1
-
-
-
-

@@ -34,6 +34,6 @@ L14 N2B N3A 10 10 1000
 L15 N3A U1 10 10 10000
 L16 N3A U2 10 10 10000
 
-
+[Flow_Id][Source][Destination][Size(MB)][Start Time(s)]
 F1 U1 D1 2 1
 F2 U2 D1 2 1

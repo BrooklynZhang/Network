@@ -75,7 +75,7 @@ class UE(object):
             key = (packet.packet_no, packet.flow_id)
             senttime = self.data_packet_time[key]
             gap_time = self.env.now - senttime
-            if packet.packet_no % 1000 == 0:
+            if packet.packet_no % 100 == 0:
                 print('UE', self.ue_id, 'receive the ack packet', packet.packet_no,'response time is', gap_time)
 
     def add_flow(self, flow):
