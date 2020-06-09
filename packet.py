@@ -50,3 +50,24 @@ class AckPacket(Packet):
         self.reward = 100
 
 
+class ForwardAnt(Packet):
+    def __init__(self, src_host_id, ant_num, time):
+        self.head = 'f'
+        self.src_host_id = src_host_id
+        self.ant_num = ant_num
+        self.stack = {src_host_id: time}
+        self.visited = [src_host_id]
+        self.stack_list = [src_host_id]
+        self.size = 64
+
+
+class BackwardAnt(Packet):
+    def __init__(self, src_host_id, dest_host_id, path, stack, ant_num, time):
+        self.head = 'b'
+        self.src_host_id = src_host_id
+        self.dest_host_id = dest_host_id
+        self.ant_num = ant_num
+        self.path = path
+        self.stack = stack
+        self.size = 64
+        self.time_stamp = time

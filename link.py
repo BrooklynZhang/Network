@@ -13,9 +13,9 @@ class Link(object):
         self.algorithm = algorithm
         self.adj_ports = {}
         self.buffercable = {}
-        self.env.process(self.reprot_packet_loss())
+        self.env.process(self.report_packet_loss())
 
-    def reprot_packet_loss(self):
+    def report_packet_loss(self):
         while True:
             keys = list(self.adj_ports.keys())
             for key in keys:

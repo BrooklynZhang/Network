@@ -1,5 +1,5 @@
 import simpy
-from packet import RadarPacket, EchoPacket, DataPacket, AckPacket
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, BackwardAnt, ForwardAnt
 
 class IAB_Donor(object):
 
@@ -47,4 +47,12 @@ class IAB_Donor(object):
 
         elif packet.head == 'a':
             print("TBD")
+
+        elif packet.head == 'f':
+            print("received a forward ant")
+            foward_path = packet.stack_list
+            next_port = foward_path.pop()
+            stack = packet.stack[self.donor_id] = self.env.now
+            backward_ant = BackwardAnt(self.donor_id, packet.src_host_id, foward_path, stack, packet.ant_num, self.env.now)
+            self.send(next_port, backward_ant)
 
