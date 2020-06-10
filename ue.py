@@ -21,33 +21,15 @@ class UE(object):
         elif self.algorithm == 'q':
             print('Select Q Learning Algorithm as Routing Algorithm')
 
-    def start_radar_routing(self):
-        print("UE",self.ue_id ,"Start Radar Routing at", self.env.now)
-        tag = 0
-        while True:
-            self.send_to_all_expect(RadarPacket(self.ue_id, tag))
-            yield self.env.timeout(5)
-            tag += 1
+    def add_flow(self, flow):
+        print('Adding flow to UE', self.ue_id, 'at', self.env.now)
+        self.flows[flow.flow_id] = flow
+        self.env.process(self.send_data_packets(flow))
 
     def add_port(self, source_id, source_port):
         if source_id in self.adj_ports:
             raise Exception('Duplicate port name')
         self.adj_ports[source_id] = source_port
-
-    def send_to_dest(self, packet, dest_id):
-        if self.algorithm == 'dijkstra':
-            next_jump_port = self.timetable[dest_id][0]
-            self.send(next_jump_port, packet)
-        elif self.algorithm == 'q':
-            self.send_to_all_expect(packet)
-
-    def send_to_all_expect(self, packet, except_id=None):
-        for ports in self.adj_ports:
-            if except_id is None or ports != except_id:
-                self.send(ports, packet)
-
-    def send(self, dest_ports, packet):
-        self.adj_ports[dest_ports].receive(packet, self.ue_id)
 
     def receive(self, packet, source_id):
         '''if packet.head == 'r':
@@ -78,10 +60,20 @@ class UE(object):
             if packet.packet_no % 100 == 0:
                 print('UE', self.ue_id, 'receive the ack packet', packet.packet_no,'response time is', gap_time)
 
-    def add_flow(self, flow):
-        print('Adding flow to UE', self.ue_id, 'at', self.env.now)
-        self.flows[flow.flow_id] = flow
-        self.env.process(self.send_data_packets(flow))
+    def send(self, dest_ports, packet):
+        self.adj_ports[dest_ports].receive(packet, self.ue_id)
+
+    def send_to_all_expect(self, packet, except_id=None):
+        for ports in self.adj_ports:
+            if except_id is None or ports != except_id:
+                self.send(ports, packet)
+
+    def send_to_dest(self, packet, dest_id):
+        if self.algorithm == 'dijkstra':
+            next_jump_port = self.timetable[dest_id][0]
+            self.send(next_jump_port, packet)
+        elif self.algorithm == 'q':
+            self.send_to_all_expect(packet)
 
     def send_data_packets(self, flow):
         yield self.env.timeout(flow.start_s)
@@ -97,3 +89,11 @@ class UE(object):
                 self.data_packet_time[key] = current_time
                 self.send_to_dest(packet, flow.dest_id)
                 flow.num_packets -= 1
+
+    def start_radar_routing(self):
+        print("UE",self.ue_id ,"Start Radar Routing at", self.env.now)
+        tag = 0
+        while True:
+            self.send_to_all_expect(RadarPacket(self.ue_id, tag))
+            yield self.env.timeout(5)
+            tag += 1

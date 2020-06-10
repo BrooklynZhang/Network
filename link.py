@@ -15,6 +15,22 @@ class Link(object):
         self.buffercable = {}
         self.env.process(self.report_packet_loss())
 
+    def add_port(self, source_id, source_port):
+        self.adj_ports[source_id] = source_port
+        self.buffercable[source_id] = BufferedCable(self,
+                                                    source_id)  # For each direction, add a bufferedcable to handle the data
+
+    def get_link_id(self):
+        return self.link_id
+
+    def receive(self, packet, source_id):
+        if self.algorithm == 'ant':
+            if packet.head == 'f':
+                packet.stack_list.append(self.link_id)
+            elif packet.head == 'b':
+                packet.path.pop()
+        self.buffercable[source_id].add_packet(packet)
+
     def report_packet_loss(self):
         while True:
             keys = list(self.adj_ports.keys())
@@ -24,17 +40,6 @@ class Link(object):
                 if packetloss > 1:
                     print("Link", self.link_id, "has total packet loss of", packetloss, 'at time', self.env.now)
             yield self.env.timeout(1)
-
-    def get_link_id(self):
-        return self.link_id
-
-    def add_port(self, source_id, source_port):
-        self.adj_ports[source_id] = source_port
-        self.buffercable[source_id] = BufferedCable(self,
-                                                    source_id)  # For each direction, add a bufferedcable to handle the data
-
-    def receive(self, packet, source_id):
-        self.buffercable[source_id].add_packet(packet)
 
     def send(self, dest_ports, packet):
         self.adj_ports[dest_ports].receive(packet, self.link_id)
@@ -67,6 +72,21 @@ class BufferedCable(object):
         self.cable = simpy.Store(self.env)
         self.env.process(self.data_fill_cable())
 
+    def add_packet(self, packet):
+        self.env.process(self.add_packets(packet))
+
+    def add_packets(self, packet):
+        with self.level[0].put(packet.size) as req:  #
+            ret = yield req | self.env.event().succeed()  # To trigger an event and mark it as successful,
+                            # As a shorthand for AnyOf
+            if req in ret:
+                self.level[1].put(packet.size)
+                self.packet_queue.append(packet)
+            else:
+                if hasattr(packet, 'flow_id'):
+                    # self.packet_loss[packet.flow_id] += 1
+                    self.total_packet_loss += 1
+
     def data_fill_cable(self):  # Sending Packet Mechanism
         while True:  # Once the Queue has data packet, it will get it and send out.
             yield self.level[1].get(1)
@@ -83,17 +103,3 @@ class BufferedCable(object):
                                                     # If all the conditions are same, long path will have more latency
         self.link.send_to_all_expect(packet, self.src_id)
 
-    def add_packet(self, packet):
-        self.env.process(self.add_packets(packet))
-
-    def add_packets(self, packet):
-        with self.level[0].put(packet.size) as req:  #
-            ret = yield req | self.env.event().succeed()  # To trigger an event and mark it as successful,
-                            # As a shorthand for AnyOf
-            if req in ret:
-                self.level[1].put(packet.size)
-                self.packet_queue.append(packet)
-            else:
-                if hasattr(packet, 'flow_id'):
-                    # self.packet_loss[packet.flow_id] += 1
-                    self.total_packet_loss += 1

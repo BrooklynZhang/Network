@@ -3,10 +3,10 @@ from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, ForwardAnt, B
 
 import numpy as np
 
+
 class IAB_Node(object):
 
     def __init__(self, env, node_id, algorithm):
-
         self.env = env
         self.node_id = node_id
         self.adj_ports = {}
@@ -27,57 +27,62 @@ class IAB_Node(object):
 
         if self.algorithm == 'ant':
             self.iteration = 10
-            self.decay = 0.95
             self.ants_num = 100
             self.pheromones_table = {}  # Routing Table, it has the probabilities P(i,n) which express the goodness
             # of choosing n as next node when the destination is i, current, it only have one destination - iab donor
-            self.trip = [0, 0, []]   # estimates of mean values and variances from node k to iab donor
+            self.trip = [0.0, 0.0, []]  # estimates of mean values and variances from node k to iab donor
             self.c = 2
-
-            self.env.process(self.start_ant_colony_algorithm())
-
-    def start_ant_colony_algorithm(self):
-        nk = len(self.adj_ports)
-        for ports in list(self.adj_ports.keys()):
-            self.pheromones_table[ports] = 1 / nk
-        iteration = 0
-        stack = {}
-        forward_ant_packet = ForwardAnt(self.node_id, iteration, stack)
-        next_port_id = np.random.choice(list(self.pheromones_table.keys()), 1)
-        self.send(next_port_id[0], forward_ant_packet)
-
-    def ant_select_port(self, ant_packet, source_id):
-        pheromones_table = self.pheromones_table().copy()
-        del pheromones_table[source_id]
-        ports_id_list = list(pheromones_table.keys())
-        prob_list = list(pheromones_table.values())
-        norm_prob = prob_list / prob_list.sum()
-        next_port_id_list = np.random.choice(ports_id_list, 1, p=norm_prob)
-        next_port_id = next_port_id_list[0]
-        if next_port_id not in ant_packet.visited:
-            return next_port_id
-        else:
-            next_port_id_list = np.random.choice(ports_id_list,1)
-            next_port_id = next_port_id_list[0]
-            return next_port_id
-
-    def initialize(self):
-        if self.algorithm == 'q':
-            for port in self.adj_ports:
-                self.q_routing_table[port] = 0
 
     def add_port(self, source_id, source_port):
         if source_id in self.adj_ports:
             raise Exception("ERROR: Duplicate port name")
         self.adj_ports[source_id] = source_port
 
-    def send(self, dest_ports, packet):
-        self.adj_ports[dest_ports].receive(packet, self.node_id)
+    def ant_select_port(self, ant_packet, source_id):
+        pheromones_table = self.pheromones_table.copy()
+        del pheromones_table[source_id]  #
+        ports_id_list = list(pheromones_table.keys())
+        prob_list = np.copy(list(pheromones_table.values()))
+        norm_prob = prob_list / prob_list.sum()
+        next_port_id_list = np.random.choice(ports_id_list, 1, p=norm_prob)
+        next_port_id = next_port_id_list[0]
+        if next_port_id not in ant_packet.visited:
+            return next_port_id
+        else:
+            next_port_id_list = np.random.choice(ports_id_list, 1)
+            next_port_id = next_port_id_list[0]
+            return next_port_id
 
-    def send_to_all_expect(self, packet, except_id=None):
-        for ports in self.adj_ports:
-            if except_id is None or ports != except_id:
-                self.send(ports, packet)
+    def calculate_reward(self, packet):
+        future_reward = packet.reward
+        key = (packet.packet_no, packet.flow_id)
+        delay = self.env.now - self.time_stamp_table[
+            key]  # The shorter the delay, the larger the reward example 0.11383424000000031
+        reward = future_reward - (100 * delay)
+        return reward
+
+    def get_action(self):
+        if np.random.rand() < self.epsilon:
+            action = np.random.choice(list(self.q_routing_table.keys()))
+        else:
+            action = max(self.q_routing_table, key=self.q_routing_table.get)
+        return action
+
+    def initialize(self):
+        if self.algorithm == 'q':
+            for port in self.adj_ports:
+                self.q_routing_table[port] = 0
+        if self.algorithm == 'ant':
+            self.env.process(self.start_ant_colony_algorithm())
+
+    def normalization(self):
+        pheromones_table = self.pheromones_table.copy()
+        keys = list(pheromones_table.keys())
+        values = pheromones_table.values()
+        norm = [float(i) / sum(values) for i in values]
+        for i in range(len(keys)):
+            pheromones_table[keys[i]] = norm[i]
+        self.pheromones_table = pheromones_table
 
     def receive(self, packet, source_id):
         if packet.head == 'r':
@@ -122,13 +127,14 @@ class IAB_Node(object):
         elif packet.head == 'f':
             if self.node_id in packet.stack_list:
                 loc = packet.stack_list.index(self.node_id)
-                pop_list = packet.stack_list[loc + 1:]
+                pop_list = packet.stack_list[(loc + 1):]
                 for e in pop_list:
-                    packet.stack.pop(e)
+                    if e in list(packet.stack.keys()):
+                        del packet.stack[e]
                 packet.stack_list = packet.stack_list[:loc + 1]
             else:
                 packet.visited.append(self.node_id)
-                packet.path.append(self.node_id)
+                packet.stack_list.append(self.node_id)
                 packet.stack[self.node_id] = self.env.now
             next_port = self.ant_select_port(packet, source_id)
             self.send(next_port, packet)
@@ -141,54 +147,6 @@ class IAB_Node(object):
             else:
                 next_port = packet.path.pop()
                 self.send(next_port, packet)
-
-    def update_the_trip_list(self, packet):
-        avg_time = self.trip[0]
-        all_values = self.trip[2]
-        forward_ant_time = packet.stack[self.node_id]
-        time_gap = self.env.now - forward_ant_time
-        count = len(all_values)
-        new_avg_time = (avg_time * count + time_gap) / (count + 1)
-        all_values.append(time_gap)
-        var = 0
-        for x in all_values:
-            var += (x - new_avg_time) ** 2
-        new_var = var / (count + 1)
-        self.trip = [new_avg_time, new_var, all_values]
-
-    def update_the_pheromones(self, packet, source_id):
-        pheromones_table = self.pheromones_table.copy()
-        prob = pheromones_table[source_id]
-        time_gap = packet.time_stamp - packet.stack[self.node_id]
-        dimensionless_measure = time_gap / (self.c * self.trip[0])
-        if dimensionless_measure >= 1:
-            dimensionless_measure = 1
-        new_p = prob + (1 - dimensionless_measure) * (1 - prob)
-        for key in list(pheromones_table.keys()):
-            pheromones_table[key] = -(1 - dimensionless_measure) * pheromones_table[key]
-        pheromones_table[source_id] = new_p
-        self.pheromones_table = pheromones_table
-
-    def get_action(self):
-        if np.random.rand() < self.epsilon:
-            action = np.random.choice(list(self.q_routing_table.keys()))
-        else:
-            action = max(self.q_routing_table, key = self.q_routing_table.get)
-        return action
-
-    def updating_q_routing_table(self, packet, source_id):
-        reward = self.calculate_reward(packet)
-        current_q = self.q_routing_table[source_id]
-        max_q = max(self.q_routing_table, key = self.q_routing_table.get)
-        new_q = reward + self.discount_factor * self.q_routing_table[max_q]
-        self.q_routing_table[source_id] += self.learning_rate * (new_q - current_q)
-
-    def calculate_reward(self, packet):
-        future_reward = packet.reward
-        key = (packet.packet_no, packet.flow_id)
-        delay = self.env.now - self.time_stamp_table[key] #The shorter the delay, the larger the reward example 0.11383424000000031
-        reward = future_reward - (100 * delay)
-        return reward
 
     def search_next_jump_forward(self, dest_id):
         if dest_id in self.forwardspaceket:
@@ -204,3 +162,59 @@ class IAB_Node(object):
             raise Exception("ERROR: Can not find forwarding path", self.node_id)
             return None
 
+    def send(self, dest_ports, packet):
+        self.adj_ports[dest_ports].receive(packet, self.node_id)
+
+    def send_to_all_expect(self, packet, except_id=None):
+        for ports in self.adj_ports:
+            if except_id is None or ports != except_id:
+                self.send(ports, packet)
+
+    def start_ant_colony_algorithm(self):
+        # print("IAB Node",self.node_id ,"Start ACO Routing at", self.env.now, self.adj_ports)
+        nk = len(self.adj_ports)
+        for ports in list(self.adj_ports.keys()):
+            self.pheromones_table[ports] = 1 / nk
+        iteration = 0
+        while True:
+            forward_ant_packet = ForwardAnt(self.node_id, iteration)
+            forward_ant_packet.stack[self.node_id] = self.env.now
+            next_port_id = np.random.choice(list(self.pheromones_table.keys()), 1)
+            self.send(next_port_id[0], forward_ant_packet)
+            yield self.env.timeout(1)
+            iteration += 1
+
+    def update_the_pheromones(self, packet, source_id):
+        pheromones_table = self.pheromones_table.copy()
+        prob = pheromones_table[source_id]
+        time_gap = packet.time_stamp - packet.stack[self.node_id]
+        dimensionless_measure = time_gap / (self.c * self.trip[0])
+        if dimensionless_measure >= 1:
+            dimensionless_measure = 1
+        new_p = prob + (1 - dimensionless_measure) * (1 - prob)
+        for key in list(pheromones_table.keys()):
+            pheromones_table[key] = pheromones_table[key] - (1 - dimensionless_measure) * pheromones_table[key]
+        pheromones_table[source_id] = new_p
+        self.pheromones_table = pheromones_table
+        self.normalization()
+
+    def update_the_trip_list(self, packet):
+        avg_time = self.trip[0]
+        all_values = self.trip[2]
+        forward_ant_time = packet.stack[self.node_id]
+        time_gap = self.env.now - forward_ant_time
+        count = len(all_values)
+        new_avg_time = (avg_time * count + time_gap) / (count + 1)
+        all_values.append(time_gap)
+        var = 0
+        for x in all_values:
+            var += (x - new_avg_time) ** 2
+        new_var = var / (count + 1)
+        self.trip = [new_avg_time, new_var, all_values]
+
+    def updating_q_routing_table(self, packet, source_id):
+        reward = self.calculate_reward(packet)
+        current_q = self.q_routing_table[source_id]
+        max_q = max(self.q_routing_table, key=self.q_routing_table.get)
+        new_q = reward + self.discount_factor * self.q_routing_table[max_q]
+        self.q_routing_table[source_id] += self.learning_rate * (new_q - current_q)

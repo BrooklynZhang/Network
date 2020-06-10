@@ -51,11 +51,11 @@ class AckPacket(Packet):
 
 
 class ForwardAnt(Packet):
-    def __init__(self, src_host_id, ant_num, time):
+    def __init__(self, src_host_id, ant_num):
         self.head = 'f'
         self.src_host_id = src_host_id
-        self.ant_num = ant_num
-        self.stack = {src_host_id: time}
+        self.tag = ant_num
+        self.stack = {}
         self.visited = [src_host_id]
         self.stack_list = [src_host_id]
         self.size = 64

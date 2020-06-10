@@ -11,7 +11,6 @@ from ue import UE
 
 
 def main(filename, algorithm):
-    print("Setting Up The Network")
 
     iabdonor_class = []
     iabnodes_class = []

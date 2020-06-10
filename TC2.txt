@@ -1,0 +1,21 @@
+D1
+
+N1A
+N2A
+N3A
+N4A
+
+U1
+
+[Link_Id][Source_Id][Dest_Id][Rate(Mbps)][Delay(ms)][Buffer(KB)]
+
+L0 D1 N1A 12.5 10 1000
+L1 N4A U1 12.5 10 1000
+L2 N1A N4A 12.5 10 1000
+L3 N1A N2A 12.5 10 1000
+L4 N3A N2A 12.5 10 1000
+L5 N1A N3A 12.5 10 1000
+
+[Flow_Id][Source][Destination][Size(MB)][Start Time(s)]
+###F1 U1 D1 2 1
+###F2 U2 D1 2 1
