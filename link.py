@@ -1,6 +1,6 @@
 import simpy
 import collections
-
+from gui import create_the_graph
 
 class Link(object):
 
@@ -12,7 +12,9 @@ class Link(object):
         self.buf_size = buf_size  # KB 2^10 Bytes
         self.algorithm = algorithm
         self.adj_ports = {}
+        self.monitor = {}
         self.buffercable = {}
+        self.running_time = 0
         self.env.process(self.report_packet_loss())
 
     def add_port(self, source_id, source_port):
@@ -22,6 +24,24 @@ class Link(object):
 
     def get_link_id(self):
         return self.link_id
+
+    def monitoring(self):
+        while True:
+            keys = list(self.adj_ports.keys())
+            for key in keys:
+                buffer = self.buffercable[key]
+                level = buffer.level[1].level
+                self.monitor[key].append((self.env.now, level))
+            if self.running_time - 0.002 <= self.env.now <= self.running_time - 0.001:
+                create_the_graph(self.link_id, self.monitor)
+            yield self.env.timeout(0.001)
+
+    def monitor_process(self, timestamp):
+        self.running_time = timestamp
+        keys = list(self.adj_ports.keys())
+        for key in keys:
+            self.monitor[key] = [(self.env.now, 0)]
+        self.env.process(self.monitoring())
 
     def receive(self, packet, source_id):
         if self.algorithm == 'ant':

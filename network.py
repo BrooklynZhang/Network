@@ -54,8 +54,12 @@ def main(filename, algorithm):
             edges_list.append((linelist[0], linelist[1]))
             edges_list.append((linelist[0], linelist[2]))
         elif linelist[0][0] == 'F': #Flow Id / Source / Target / Data(MB) / Start Time
-            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], algorithm)
+            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], algorithm, linelist[5])
             flow_list.append(flow)
+        elif linelist[0][0] == 'r':
+            running_time = float(linelist[1])
+        elif linelist[0][0] == 'm':
+            b_monitor = linelist[1]
 
     for elements in edges_list:
         l = devices_list[elements[0]]
@@ -69,11 +73,13 @@ def main(filename, algorithm):
         iabnode.initialize()
 
     for flow in flow_list:
-        print(devices_list[flow.src_id].ue_id)
         devices_list[flow.src_id].add_flow(flow)
 
+    if b_monitor == 'y':
+        for l in links_class:
+            l.monitor_process(running_time)
 
-    env.run(until=5)
+    env.run(until=running_time)
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()

@@ -84,18 +84,21 @@ class UE(object):
                     print('EVENT: UE',self.ue_id,"Send DataPacket", flow.num_packets,'/',total_packets,'to',flow.dest_id)
                 datapacket_id = flow.num_packets
                 current_time = self.env.now
-                packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time) #src_host_id, dest_host_id, flow_id, packetnum, timestamp
+                packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack) #src_host_id, dest_host_id, flow_id, packetnum, timestamp
                 key = (datapacket_id, flow.flow_id)
                 self.data_packet_time[key] = current_time
                 self.send_to_dest(packet, flow.dest_id)
                 flow.num_packets -= 1
+        if flow.ack == 'y':
+            print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have Ack Packet')
+        else:
+            print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have No Ack Packet')
 
     def start_radar_routing(self):
         print("EVENT: UE",self.ue_id ,"Start Radar Routing at", self.env.now)
         tag = 0
         while True:
             packet = RadarPacket(self.ue_id, tag)
-            packet.path.append(self.ue_id)
             self.send_to_all_expect(packet)
             yield self.env.timeout(5)
             tag += 1

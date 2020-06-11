@@ -25,11 +25,15 @@ class IAB_Donor(object):
             print('EVENT: IAB_DONOR', self.donor_id, 'receives the Echo packet from', packet.dest_host_id, 'at', self.env.now)
 
         elif packet.head == 'd':
-            if self.algorithm in ['q', 'ant']:
+            if packet.ack == 'y':
+                if self.algorithm in ['q', 'ant', 'dijkstra']:
+                    if packet.packet_no % 500 == 0:
+                        print('EVENT: IAB Donor', self.donor_id,'received the data packet from', packet.src_host_id, 'with packet id of', packet.packet_no)
+                self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no, self.env.now))
+            else:
                 if packet.packet_no % 500 == 0:
-                    print('EVENT: IAB Donor', self.donor_id,'received the data packet from', packet.src_host_id, 'with packet id of', packet.packet_no)
-            self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no, self.env.now))
-
+                    print('EVENT: IAB Donor', self.donor_id, 'received the data packet from', packet.src_host_id,
+                          'with packet id of', packet.packet_no)
         elif packet.head == 'a':
             #print('EVENT: IAB Donor', self.donor_id, "send AckPacket to",packet.dest_host_id, 'with last iab of', packet.dest_node_id)
             pass

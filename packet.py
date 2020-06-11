@@ -28,7 +28,7 @@ class EchoPacket(Packet):
 
 
 class DataPacket(Packet):
-    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp):  # src/dest host id, flow id, pack number, time stamp
+    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp, ack):  # src/dest host id, flow id, pack number, time stamp
         self.head = 'd'
         self.src_host_id = src_host_id
         self.src_node_id = None
@@ -37,6 +37,7 @@ class DataPacket(Packet):
         self.packet_no = packetnum
         self.timestamp = timestamp
         self.size = 1024
+        self.ack = ack
 
 
 class AckPacket(Packet):
