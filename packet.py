@@ -31,6 +31,7 @@ class DataPacket(Packet):
     def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp):  # src/dest host id, flow id, pack number, time stamp
         self.head = 'd'
         self.src_host_id = src_host_id
+        self.src_node_id = None
         self.dest_host_id = dest_host_id
         self.flow_id = flow_id
         self.packet_no = packetnum
@@ -39,9 +40,10 @@ class DataPacket(Packet):
 
 
 class AckPacket(Packet):
-    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp):
+    def __init__(self, src_host_id, dest_host_id, dest_node_id, flow_id, packetnum, timestamp):
         self.head = 'a'
         self.src_host_id = src_host_id
+        self.dest_node_id = dest_node_id
         self.dest_host_id = dest_host_id
         self.flow_id = flow_id
         self.packet_no = packetnum
@@ -51,10 +53,12 @@ class AckPacket(Packet):
 
 
 class ForwardAnt(Packet):
-    def __init__(self, src_host_id, ant_num):
+    def __init__(self, src_host_id, dest_host_id, packet_id, version):
         self.head = 'f'
         self.src_host_id = src_host_id
-        self.tag = ant_num
+        self.dest_host_id = dest_host_id
+        self.tag = version
+        self.packet_no = packet_id
         self.stack = {}
         self.visited = [src_host_id]
         self.stack_list = [src_host_id]
@@ -62,11 +66,12 @@ class ForwardAnt(Packet):
 
 
 class BackwardAnt(Packet):
-    def __init__(self, src_host_id, dest_host_id, path, stack, ant_num, time):
+    def __init__(self, src_host_id, dest_host_id, path, stack, packet_id, tag, time):
         self.head = 'b'
         self.src_host_id = src_host_id
         self.dest_host_id = dest_host_id
-        self.ant_num = ant_num
+        self.packet_no = packet_id
+        self.tag = tag
         self.path = path
         self.stack = stack
         self.size = 64

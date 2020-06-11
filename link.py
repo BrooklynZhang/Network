@@ -38,7 +38,7 @@ class Link(object):
                 buffer = self.buffercable[key]
                 packetloss = buffer.total_packet_loss
                 if packetloss > 1:
-                    print("Link", self.link_id, "has total packet loss of", packetloss, 'at time', self.env.now)
+                    print("WARNING: Link", self.link_id, "has total packet loss of", packetloss, 'at time', self.env.now)
             yield self.env.timeout(1)
 
     def send(self, dest_ports, packet):

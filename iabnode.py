@@ -11,6 +11,8 @@ class IAB_Node(object):
         self.node_id = node_id
         self.adj_ports = {}
         self.algorithm = algorithm
+        self.iab_id_list = []
+        self.adj_ues = {}
 
         if self.algorithm == 'dijkstra':
             self.radar_tag_table = {}
@@ -26,8 +28,9 @@ class IAB_Node(object):
             self.epsilon = 0.1
 
         if self.algorithm == 'ant':
+            self.threshold = float(0.0)
             self.iteration = 10
-            self.ants_num = 100
+            self.ants_num = 1000
             self.pheromones_table = {}  # Routing Table, it has the probabilities P(i,n) which express the goodness
             # of choosing n as next node when the destination is i, current, it only have one destination - iab donor
             self.trip = [0.0, 0.0, []]  # estimates of mean values and variances from node k to iab donor
@@ -39,19 +42,23 @@ class IAB_Node(object):
         self.adj_ports[source_id] = source_port
 
     def ant_select_port(self, ant_packet, source_id):
-        pheromones_table = self.pheromones_table.copy()
-        del pheromones_table[source_id]  #
-        ports_id_list = list(pheromones_table.keys())
-        prob_list = np.copy(list(pheromones_table.values()))
-        norm_prob = prob_list / prob_list.sum()
-        next_port_id_list = np.random.choice(ports_id_list, 1, p=norm_prob)
-        next_port_id = next_port_id_list[0]
-        if next_port_id not in ant_packet.visited:
-            return next_port_id
+        dest_pheromones_table = self.pheromones_table[ant_packet.dest_host_id].copy()
+        del dest_pheromones_table[source_id]  #
+        if dest_pheromones_table == {}:
+            print('WARNING: No Path Anymore')
+            return None
         else:
-            next_port_id_list = np.random.choice(ports_id_list, 1)
+            ports_id_list = list(dest_pheromones_table.keys())
+            prob_list = np.copy(list(dest_pheromones_table.values()))
+            norm_prob = prob_list / prob_list.sum()
+            next_port_id_list = np.random.choice(ports_id_list, 1, p=norm_prob)
             next_port_id = next_port_id_list[0]
-            return next_port_id
+            if next_port_id not in ant_packet.visited:
+                return next_port_id
+            else:
+                next_port_id_list = np.random.choice(ports_id_list, 1)
+                next_port_id = next_port_id_list[0]
+                return next_port_id
 
     def calculate_reward(self, packet):
         future_reward = packet.reward
@@ -60,6 +67,16 @@ class IAB_Node(object):
             key]  # The shorter the delay, the larger the reward example 0.11383424000000031
         reward = future_reward - (100 * delay)
         return reward
+
+    def data_ant_select_port(self, dest_id, source_id):
+        dest_pheromones_table = self.pheromones_table[dest_id].copy()
+        del dest_pheromones_table[source_id]
+        ports_id_list = list(dest_pheromones_table.keys())
+        prob_list = np.copy(list(dest_pheromones_table.values()))
+        norm_prob = prob_list / prob_list.sum()
+        next_port_id_list = np.random.choice(ports_id_list, 1, p=norm_prob)
+        next_port_id = next_port_id_list[0]
+        return next_port_id
 
     def get_action(self):
         if np.random.rand() < self.epsilon:
@@ -75,14 +92,14 @@ class IAB_Node(object):
         if self.algorithm == 'ant':
             self.env.process(self.start_ant_colony_algorithm())
 
-    def normalization(self):
-        pheromones_table = self.pheromones_table.copy()
-        keys = list(pheromones_table.keys())
-        values = pheromones_table.values()
+    def normalization(self, dest_id):
+        dest_pheromones_table = self.pheromones_table[dest_id].copy()
+        keys = list(dest_pheromones_table.keys())
+        values = dest_pheromones_table.values()
         norm = [float(i) / sum(values) for i in values]
         for i in range(len(keys)):
-            pheromones_table[keys[i]] = norm[i]
-        self.pheromones_table = pheromones_table
+            dest_pheromones_table[keys[i]] = norm[i]
+        self.pheromones_table[dest_id] = dest_pheromones_table
 
     def receive(self, packet, source_id):
         if packet.head == 'r':
@@ -107,6 +124,10 @@ class IAB_Node(object):
                     self.send(self.backwardspacket[dest_host_id], packet)
 
         elif packet.head == 'd':
+            if packet.src_host_id not in list(self.adj_ues.keys()):
+                self.adj_ues[packet.src_host_id] = source_id
+            if packet.src_node_id == None:
+                packet.src_node_id = self.node_id
             if self.algorithm == 'dijkstra':
                 self.send(self.search_next_jump_forward(packet.dest_host_id), packet)
             elif self.algorithm == 'q':
@@ -115,6 +136,9 @@ class IAB_Node(object):
                 self.q_routing_back_table[key] = source_id
                 self.time_stamp_table[key] = self.env.now
                 self.send(action, packet)
+            elif self.algorithm == 'ant':
+                next_port = self.data_ant_select_port(packet.dest_host_id, source_id)
+                self.send(next_port, packet)
 
         elif packet.head == 'a':
             if self.algorithm == 'dijkstra':
@@ -123,27 +147,48 @@ class IAB_Node(object):
                 self.updating_q_routing_table(packet, source_id)
                 key = (packet.packet_no, packet.flow_id)
                 self.send(self.q_routing_back_table[key], packet)
+            elif self.algorithm == 'ant':
+                if packet.dest_host_id in list(self.adj_ues.keys()):
+                    next_port = self.adj_ues[packet.dest_host_id]
+                else:
+                    next_port = self.data_ant_select_port(packet.dest_node_id, source_id)
+                self.send(next_port, packet)
 
         elif packet.head == 'f':
-            if self.node_id in packet.stack_list:
-                loc = packet.stack_list.index(self.node_id)
-                pop_list = packet.stack_list[(loc + 1):]
-                for e in pop_list:
-                    if e in list(packet.stack.keys()):
-                        del packet.stack[e]
-                packet.stack_list = packet.stack_list[:loc + 1]
+            if packet.dest_host_id == self.node_id:
+                foward_path = packet.stack_list
+                next_port = foward_path.pop()
+                stack = packet.stack
+                stack[self.node_id] = self.env.now
+                backward_ant = BackwardAnt(self.node_id, packet.src_host_id, foward_path, stack, packet.packet_no,
+                                           packet.tag, self.env.now)
+                self.send(next_port, backward_ant)
             else:
-                packet.visited.append(self.node_id)
-                packet.stack_list.append(self.node_id)
-                packet.stack[self.node_id] = self.env.now
-            next_port = self.ant_select_port(packet, source_id)
-            self.send(next_port, packet)
+                if self.node_id in packet.stack_list:
+                    loc = packet.stack_list.index(self.node_id)
+                    pop_list = packet.stack_list[(loc + 1):]
+                    for e in pop_list:
+                        if e in list(packet.stack.keys()):
+                            del packet.stack[e]
+                    packet.stack_list = packet.stack_list[:loc + 1]
+                    packet.visited.append(self.node_id)
+                else:
+                    packet.visited.append(self.node_id)
+                    packet.stack_list.append(self.node_id)
+                    if packet.stack. __contains__(self.node_id):
+                        print('ERROR: Cycle Detected')
+                    packet.stack[self.node_id] = self.env.now
+                next_port = self.ant_select_port(packet, source_id)
+
+                if next_port is not None:
+                    self.send(next_port, packet)
 
         elif packet.head == 'b':
             self.update_the_trip_list(packet)
             self.update_the_pheromones(packet, source_id)
             if packet.dest_host_id == self.node_id:
-                print('ant_return_to_dest', self.node_id, self.ants_num)
+                #print('EVENT:', self.node_id, 'receives its backforward ant #', packet.packet_no,'with tag of', packet.tag)
+                pass
             else:
                 next_port = packet.path.pop()
                 self.send(next_port, packet)
@@ -171,32 +216,46 @@ class IAB_Node(object):
                 self.send(ports, packet)
 
     def start_ant_colony_algorithm(self):
-        # print("IAB Node",self.node_id ,"Start ACO Routing at", self.env.now, self.adj_ports)
+        # print('EVENT: IAB Node',self.node_id ,"Start ACO Routing at", self.env.now, self.adj_ports)
         nk = len(self.adj_ports)
-        for ports in list(self.adj_ports.keys()):
-            self.pheromones_table[ports] = 1 / nk
-        iteration = 0
+        self.threshold = 1 / (nk * 5)
+        for iab_id in self.iab_id_list:
+            if self.node_id != iab_id:
+                dict_pheromones = {}
+                for ports in list(self.adj_ports.keys()):
+                    dict_pheromones[ports]= 1 / nk
+                self.pheromones_table[iab_id] = dict_pheromones
+        tag = 0
         while True:
-            forward_ant_packet = ForwardAnt(self.node_id, iteration)
-            forward_ant_packet.stack[self.node_id] = self.env.now
-            next_port_id = np.random.choice(list(self.pheromones_table.keys()), 1)
-            self.send(next_port_id[0], forward_ant_packet)
-            yield self.env.timeout(1)
-            iteration += 1
+            id = 0
+            while id < self.ants_num:
+                dest_host_id = np.random.choice(self.iab_id_list, 1)
+                if dest_host_id == self.node_id:
+                    continue
+                forward_ant_packet = ForwardAnt(self.node_id, dest_host_id[0], id, tag)
+                forward_ant_packet.stack[self.node_id] = self.env.now
+                next_port_id = np.random.choice(list(self.pheromones_table[dest_host_id[0]].keys()), 1)
+                self.send(next_port_id[0], forward_ant_packet)
+                id += 1
+            yield self.env.timeout(5)
+            tag += 1
 
     def update_the_pheromones(self, packet, source_id):
-        pheromones_table = self.pheromones_table.copy()
-        prob = pheromones_table[source_id]
-        time_gap = packet.time_stamp - packet.stack[self.node_id]
+        dest_pheromones_table = self.pheromones_table[packet.src_host_id].copy()
+        prob = dest_pheromones_table[source_id]
+        time_gap = self.env.now - packet.stack[self.node_id]
         dimensionless_measure = time_gap / (self.c * self.trip[0])
         if dimensionless_measure >= 1:
             dimensionless_measure = 1
         new_p = prob + (1 - dimensionless_measure) * (1 - prob)
-        for key in list(pheromones_table.keys()):
-            pheromones_table[key] = pheromones_table[key] - (1 - dimensionless_measure) * pheromones_table[key]
-        pheromones_table[source_id] = new_p
-        self.pheromones_table = pheromones_table
-        self.normalization()
+        for key in list(dest_pheromones_table.keys()):
+            res = dest_pheromones_table[key] - (1 - dimensionless_measure) * dest_pheromones_table[key]
+            #if res < self.threshold:
+            #    res = 0.0
+            dest_pheromones_table[key] = res
+        dest_pheromones_table[source_id] = new_p
+        self.pheromones_table[packet.src_host_id] = dest_pheromones_table
+        self.normalization(packet.src_host_id)
 
     def update_the_trip_list(self, packet):
         avg_time = self.trip[0]

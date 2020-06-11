@@ -16,6 +16,7 @@ def main(filename, algorithm):
     iabnodes_class = []
     ue_class = []
     links_class = []
+    iab_id_list = []
 
     devices_list = {}
     edges_list = []
@@ -35,9 +36,11 @@ def main(filename, algorithm):
         if linelist[0][0] == 'D':
             donor = IAB_Donor(env, linelist[0], algorithm)
             iabdonor_class.append(donor)
+            iab_id_list.append(linelist[0])
             devices_list[linelist[0]] = donor
         elif linelist[0][0] == 'N':
             node = IAB_Node(env, linelist[0], algorithm)
+            iab_id_list.append(linelist[0])
             iabnodes_class.append(node)
             devices_list[linelist[0]] = node
         elif linelist[0][0] == 'U':
@@ -62,6 +65,7 @@ def main(filename, algorithm):
         d.add_port(elements[0], l)#hosts/routers add port of device id:L#, port is link
 
     for iabnode in iabnodes_class:
+        iabnode.iab_id_list = iab_id_list
         iabnode.initialize()
 
     for flow in flow_list:
@@ -76,6 +80,6 @@ if __name__ == '__main__':
     arg_parser.add_argument("input_file", help="input file")
     arg_parser.add_argument("algorithm", help="algorithm")
     args = arg_parser.parse_args()
-    print(args.input_file)
-    print(args.algorithm)
+    print('EVENT: The Test Case File is:', args.input_file)
+    print('EVENT: The Algorithm is:', args.algorithm)
     env = main(args.input_file, args.algorithm)
