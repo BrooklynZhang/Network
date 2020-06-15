@@ -7,15 +7,17 @@ class Link(object):
     def __init__(self, env, link_id, rate, delay, buf_size, algorithm):
         self.env = env
         self.link_id = link_id
-        self.rate = rate  # Mbps
+        self.rate = float(rate)  # Mbps
         self.delay = delay  # Milliseconds
         self.buf_size = buf_size  # KB 2^10 Bytes
         self.algorithm = algorithm
         self.adj_ports = {}
-        self.monitor = {}
+        self.monitor_link_usage = {}
+        self.monitor_transmission_t = {}
         self.buffercable = {}
         self.running_time = 0
         self.env.process(self.report_packet_loss())
+
 
     def add_port(self, source_id, source_port):
         self.adj_ports[source_id] = source_port
@@ -25,30 +27,32 @@ class Link(object):
     def get_link_id(self):
         return self.link_id
 
-    def monitoring(self):
+    def monitoring_link_usage(self):
         while True:
             keys = list(self.adj_ports.keys())
             for key in keys:
                 buffer = self.buffercable[key]
                 level = buffer.level[1].level
-                self.monitor[key].append((self.env.now, level))
-            if self.running_time - 0.002 <= self.env.now <= self.running_time - 0.001:
-                create_the_graph(self.link_id, self.monitor)
-            yield self.env.timeout(0.001)
+                self.monitor_link_usage[key].append((self.env.now, level))
+            yield self.env.timeout(64.0 * 8.0
+                                   / (self.rate * 1.0E6))
 
     def monitor_process(self, timestamp):
-        self.running_time = timestamp
         keys = list(self.adj_ports.keys())
         for key in keys:
-            self.monitor[key] = [(self.env.now, 0)]
-        self.env.process(self.monitoring())
+            self.monitor_link_usage[key] = []
+            self.monitor_transmission_t[key] = []
+        self.env.process(self.monitoring_link_usage())
 
     def receive(self, packet, source_id):
         if self.algorithm == 'ant':
             if packet.head == 'f':
                 packet.stack_list.append(self.link_id)
+                packet.visited.append(self.link_id)
+                packet.stack[self.link_id] = self.env.now
             elif packet.head == 'b':
                 packet.path.pop()
+        packet.link_timestamp = self.env.now
         self.buffercable[source_id].add_packet(packet)
 
     def report_packet_loss(self):
@@ -62,6 +66,8 @@ class Link(object):
             yield self.env.timeout(1)
 
     def send(self, dest_ports, packet):
+        time_gap = self.env.now - packet.link_timestamp
+        self.monitor_transmission_t[dest_ports].append((self.env.now, time_gap))
         self.adj_ports[dest_ports].receive(packet, self.link_id)
 
     def send_to_all_expect(self, packet, except_id=None):
@@ -77,10 +83,11 @@ class BufferedCable(object):
         self.link = link
         self.env = link.env
         self.link_id = link.link_id
-        self.rate = float(link.rate)  # Mbps
+        self.rate = link.rate  # Mbps
         self.delay = float(link.delay)  # Milliseconds
         self.buf_size = 1.0E3 * int(link.buf_size)  # KB to Bytes
         self.packet_loss = {}
+        self.monitor_usage = []
         self.total_packet_loss = 0
         self.packet_queue = collections.deque()  # Save the Data Packet
         self.level = (  # Modelling the production and consumption of a homogeneous,
@@ -102,6 +109,7 @@ class BufferedCable(object):
             if req in ret:
                 self.level[1].put(packet.size)
                 self.packet_queue.append(packet)
+                self.monitor_usage.append((self.env.now, self.level[1].level))
             else:
                 if hasattr(packet, 'flow_id'):
                     # self.packet_loss[packet.flow_id] += 1
@@ -111,6 +119,7 @@ class BufferedCable(object):
         while True:  # Once the Queue has data packet, it will get it and send out.
             yield self.level[1].get(1)
             packet = self.packet_queue.popleft()
+            self.monitor_usage.append((self.env.now, self.level[1].level))
             yield self.level[1].get(packet.size - 1)
             yield self.env.timeout(packet.size * 8  # Sending time for each Packet, if the Rate is set to 20 Mbps,
                                    / (self.rate * 1.0E6))  # a empty buffer link needs 0.0004 s to transfer a 1024 B
@@ -121,5 +130,6 @@ class BufferedCable(object):
     def delay_fun(self, packet):
         yield self.env.timeout(self.delay / 1.0E3)  # Each Data Packet will have a latency.
                                                     # If all the conditions are same, long path will have more latency
+
         self.link.send_to_all_expect(packet, self.src_id)
 

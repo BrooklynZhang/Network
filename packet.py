@@ -12,6 +12,7 @@ class RadarPacket(Packet):
         self.src_host_id = src_host_id
         self.tag = tag
         self.size = 64
+        self.link_timestamp = None
 
 
 class EchoPacket(Packet):
@@ -22,6 +23,7 @@ class EchoPacket(Packet):
         self.tag = tag
         self.size = 64
         self.path = [src_host_id]
+        self.link_timestamp = None
 
     def add_path(self, id):
         self.path.append(id)
@@ -38,6 +40,7 @@ class DataPacket(Packet):
         self.timestamp = timestamp
         self.size = 1024
         self.ack = ack
+        self.link_timestamp = None
 
 
 class AckPacket(Packet):
@@ -51,6 +54,7 @@ class AckPacket(Packet):
         self.timestamp = timestamp
         self.size = 64
         self.reward = 100
+        self.link_timestamp = None
 
 
 class ForwardAnt(Packet):
@@ -61,9 +65,10 @@ class ForwardAnt(Packet):
         self.tag = version
         self.packet_no = packet_id
         self.stack = {}
-        self.visited = [src_host_id]
-        self.stack_list = [src_host_id]
+        self.visited = []
+        self.stack_list = []
         self.size = 64
+        self.link_timestamp = None
 
 
 class BackwardAnt(Packet):
@@ -77,3 +82,4 @@ class BackwardAnt(Packet):
         self.stack = stack
         self.size = 64
         self.time_stamp = time
+        self.link_timestamp = None

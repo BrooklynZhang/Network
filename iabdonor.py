@@ -9,6 +9,7 @@ class IAB_Donor(object):
         self.donor_id = donor_id
         self.adj_ports = {}
         self.algorithm = algorithm
+        self.monitor_transmission_t = {}
         # self.env.process(self.start_radar_routing())
 
     def add_port(self, source_id, source_port):
@@ -25,6 +26,11 @@ class IAB_Donor(object):
             print('EVENT: IAB_DONOR', self.donor_id, 'receives the Echo packet from', packet.dest_host_id, 'at', self.env.now)
 
         elif packet.head == 'd':
+            time_gap = self.env.now - packet.timestamp
+            if packet.flow_id in self.monitor_transmission_t:
+                self.monitor_transmission_t[packet.flow_id].append((packet.packet_no, time_gap))
+            else:
+                self.monitor_transmission_t[packet.flow_id] = [(packet.packet_no, time_gap)]
             if packet.ack == 'y':
                 if self.algorithm in ['q', 'ant', 'dijkstra']:
                     if packet.packet_no % 500 == 0:

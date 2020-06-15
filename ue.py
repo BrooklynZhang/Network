@@ -14,6 +14,7 @@ class UE(object):
         self.flows = {}
         self.timetable = defaultdict(int)
         self.data_packet_time = {}
+        self.monitor_data_act_time = {}
 
         if self.algorithm == 'dijkstra':
             self.env.process(self.start_radar_routing())
@@ -22,7 +23,6 @@ class UE(object):
             print('Select Q Learning Algorithm as Routing Algorithm')
 
     def add_flow(self, flow):
-        print('EVENT: Adding flow to UE', self.ue_id, 'at', self.env.now)
         self.flows[flow.flow_id] = flow
         self.env.process(self.send_data_packets(flow))
 
@@ -57,6 +57,8 @@ class UE(object):
             key = (packet.packet_no, packet.flow_id)
             senttime = self.data_packet_time[key]
             gap_time = self.env.now - senttime
+            if packet.packet_no % 50 == 0:
+                self.monitor_data_act_time[packet.flow_id].append((packet.packet_no, gap_time))
             if packet.packet_no % 500 == 0:
                 print('EVENT: UE', self.ue_id, 'receive the ack packet', packet.packet_no,'response time is', gap_time)
 
@@ -77,17 +79,19 @@ class UE(object):
 
     def send_data_packets(self, flow):
         yield self.env.timeout(flow.start_s)
+        print('EVENT: Adding flow to UE', self.ue_id, 'at', self.env.now)
         total_packets = flow.num_packets
-        print('EVENT: UE', self.ue_id, "Send DataPacket", flow.num_packets, '/', total_packets, 'to', flow.dest_id)
+        self.monitor_data_act_time[flow.flow_id] = []
+        datapacket_id = 0
         while flow.num_packets >= 0:
-                if flow.num_packets % 500 == 0:
-                    print('EVENT: UE',self.ue_id,"Send DataPacket", flow.num_packets,'/',total_packets,'to',flow.dest_id)
-                datapacket_id = flow.num_packets
+                if datapacket_id % 500 == 0 or datapacket_id == total_packets:
+                    print('EVENT: UE',self.ue_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id)
                 current_time = self.env.now
                 packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack) #src_host_id, dest_host_id, flow_id, packetnum, timestamp
                 key = (datapacket_id, flow.flow_id)
                 self.data_packet_time[key] = current_time
                 self.send_to_dest(packet, flow.dest_id)
+                datapacket_id += 1
                 flow.num_packets -= 1
         if flow.ack == 'y':
             print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have Ack Packet')

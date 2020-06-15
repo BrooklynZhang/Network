@@ -2,6 +2,8 @@ import simpy
 import sys
 import argparse
 
+import gui
+
 from link import Link
 from packet import DataPacket
 from flow import BaseFlow
@@ -80,6 +82,8 @@ def main(filename, algorithm):
             l.monitor_process(running_time)
 
     env.run(until=running_time)
+
+    gui.collecting_data(iabdonor_class, iabnodes_class, ue_class, links_class)
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()

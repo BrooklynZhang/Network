@@ -155,6 +155,7 @@ class IAB_Node(object):
                 self.send(next_port, packet)
 
         elif packet.head == 'f':
+            packet.visited.append(self.node_id)
             if packet.dest_host_id == self.node_id:
                 foward_path = packet.stack_list
                 next_port = foward_path.pop()
@@ -171,11 +172,9 @@ class IAB_Node(object):
                         if e in list(packet.stack.keys()):
                             del packet.stack[e]
                     packet.stack_list = packet.stack_list[:loc + 1]
-                    packet.visited.append(self.node_id)
                 else:
-                    packet.visited.append(self.node_id)
                     packet.stack_list.append(self.node_id)
-                    if packet.stack. __contains__(self.node_id):
+                    if self.node_id in packet.stack:
                         print('ERROR: Cycle Detected')
                     packet.stack[self.node_id] = self.env.now
                 next_port = self.ant_select_port(packet, source_id)
@@ -230,13 +229,14 @@ class IAB_Node(object):
             id = 0
             while id < self.ants_num:
                 dest_host_id = np.random.choice(self.iab_id_list, 1)
-                if dest_host_id == self.node_id:
-                    continue
-                forward_ant_packet = ForwardAnt(self.node_id, dest_host_id[0], id, tag)
-                forward_ant_packet.stack[self.node_id] = self.env.now
-                next_port_id = np.random.choice(list(self.pheromones_table[dest_host_id[0]].keys()), 1)
-                self.send(next_port_id[0], forward_ant_packet)
-                id += 1
+                if dest_host_id[0] != self.node_id:
+                    forward_ant_packet = ForwardAnt(self.node_id, dest_host_id[0], id, tag)
+                    forward_ant_packet.stack[self.node_id] = self.env.now
+                    forward_ant_packet.stack_list.append(self.node_id)
+                    forward_ant_packet.visited.append(self.node_id)
+                    next_port_id = np.random.choice(list(self.pheromones_table[dest_host_id[0]].keys()), 1)
+                    self.send(next_port_id[0], forward_ant_packet)
+                    id += 1
             yield self.env.timeout(5)
             tag += 1
 
