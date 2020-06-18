@@ -14,6 +14,7 @@ class Link(object):
         self.adj_ports = {}
         self.monitor_link_usage = {}
         self.monitor_transmission_t = {}
+        self.monitor_packet_loss = {}
         self.buffercable = {}
         self.running_time = 0
         self.env.process(self.report_packet_loss())
@@ -33,15 +34,17 @@ class Link(object):
             for key in keys:
                 buffer = self.buffercable[key]
                 level = buffer.level[1].level
+                packet_loss = buffer.total_packet_loss
                 self.monitor_link_usage[key].append((self.env.now, level))
-            yield self.env.timeout(64.0 * 8.0
-                                   / (self.rate * 1.0E6))
+                self.monitor_packet_loss[key].append((self.env.now, packet_loss))
+            yield self.env.timeout(0.001)
 
     def monitor_process(self, timestamp):
         keys = list(self.adj_ports.keys())
         for key in keys:
             self.monitor_link_usage[key] = []
             self.monitor_transmission_t[key] = []
+            self.monitor_packet_loss[key] = []
         self.env.process(self.monitoring_link_usage())
 
     def receive(self, packet, source_id):

@@ -1,6 +1,6 @@
 import simpy
 from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, BackwardAnt, ForwardAnt
-
+from collections import defaultdict
 
 class IAB_Donor(object):
 
@@ -9,8 +9,15 @@ class IAB_Donor(object):
         self.donor_id = donor_id
         self.adj_ports = {}
         self.algorithm = algorithm
+        self.timetable = defaultdict(int)
         self.monitor_transmission_t = {}
+        self.monitor_data_act_time = {}
+        self.data_packet_time = {}
         # self.env.process(self.start_radar_routing())
+
+    def add_flow(self, flow):
+        self.flows[flow.flow_id] = flow
+        self.env.process(self.send_data_packets(flow))
 
     def add_port(self, source_id, source_port):
         if source_id in self.adj_ports:
@@ -19,7 +26,7 @@ class IAB_Donor(object):
 
     def receive(self, packet, source_id):
         if packet.head == 'r':
-            print('EVENT: IAB_DONOR', self.donor_id, 'receive the data packet from', packet.src_host_id, 'at', self.env.now)
+            #print('EVENT: IAB_DONOR', self.donor_id, 'receive the data packet from', packet.src_host_id, 'at', self.env.now)
             self.send(source_id, EchoPacket(self.donor_id, packet.src_host_id, packet.tag))
 
         elif packet.head == 'e':
@@ -55,6 +62,36 @@ class IAB_Donor(object):
 
     def send(self, dest_ports, packet):
         self.adj_ports[dest_ports].receive(packet, self.donor_id)
+
+    def send_data_packets(self, flow):
+        yield self.env.timeout(flow.start_s)
+        print('EVENT: Adding flow to IAB Donor', self.donor_id, 'at', self.env.now)
+        total_packets = flow.num_packets
+        self.monitor_data_act_time[flow.flow_id] = []
+        datapacket_id = 0
+        time_gamp = flow.oper_time / total_packets
+        while flow.num_packets >= 0:
+                if datapacket_id % 500 == 0 or datapacket_id == total_packets:
+                    print('EVENT: IAB DONOR',self.donor_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id)
+                current_time = self.env.now
+                packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack) #src_host_id, dest_host_id, flow_id, packetnum, timestamp
+                key = (datapacket_id, flow.flow_id)
+                self.data_packet_time[key] = current_time
+                self.send_to_dest(packet, flow.dest_id)
+                datapacket_id += 1
+                flow.num_packets -= 1
+                yield self.env.timeout(time_gamp)
+        if flow.ack == 'y':
+            print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have Ack Packet')
+        else:
+            print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have No Ack Packet')
+
+    def send_to_dest(self, packet, dest_id):
+        if self.algorithm == 'dijkstra':
+            next_jump_port = self.timetable[dest_id][0]
+            self.send(next_jump_port, packet)
+        elif self.algorithm in ['q', 'ant']:
+            self.send_to_all_expect(packet)
 
     def send_to_all_expect(self, packet, except_id=None):
         for ports in self.adj_ports:

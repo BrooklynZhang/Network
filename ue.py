@@ -43,7 +43,7 @@ class UE(object):
             origin_id = packet.src_host_id
             if self.timetable[origin_id] == 0:
                 self.timetable[origin_id] = (source_id, tag)
-                print('EVENT: UE received the Echo Packet. The path to IAB-DONOR is', packet.path)
+                print('EVENT: UE', self.ue_id, 'received the Echo Packet. The path to IAB-DONOR is', packet.path)
             else:
                 if tag > self.timetable[origin_id][1]:
                     self.timetable[origin_id] = (source_id, tag)
@@ -57,8 +57,7 @@ class UE(object):
             key = (packet.packet_no, packet.flow_id)
             senttime = self.data_packet_time[key]
             gap_time = self.env.now - senttime
-            if packet.packet_no % 50 == 0:
-                self.monitor_data_act_time[packet.flow_id].append((packet.packet_no, gap_time))
+            self.monitor_data_act_time[packet.flow_id].append((packet.packet_no, gap_time))
             if packet.packet_no % 500 == 0:
                 print('EVENT: UE', self.ue_id, 'receive the ack packet', packet.packet_no,'response time is', gap_time)
 
@@ -83,6 +82,7 @@ class UE(object):
         total_packets = flow.num_packets
         self.monitor_data_act_time[flow.flow_id] = []
         datapacket_id = 0
+        time_gamp = flow.oper_time / total_packets
         while flow.num_packets >= 0:
                 if datapacket_id % 500 == 0 or datapacket_id == total_packets:
                     print('EVENT: UE',self.ue_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id)
@@ -93,15 +93,16 @@ class UE(object):
                 self.send_to_dest(packet, flow.dest_id)
                 datapacket_id += 1
                 flow.num_packets -= 1
+                yield self.env.timeout(time_gamp)
         if flow.ack == 'y':
             print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have Ack Packet')
         else:
             print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have No Ack Packet')
 
     def start_radar_routing(self):
-        print("EVENT: UE",self.ue_id ,"Start Radar Routing at", self.env.now)
         tag = 0
         while True:
+            print("EVENT: UE", self.ue_id, "Start Radar Routing at", self.env.now)
             packet = RadarPacket(self.ue_id, tag)
             self.send_to_all_expect(packet)
             yield self.env.timeout(5)

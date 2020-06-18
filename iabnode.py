@@ -18,6 +18,7 @@ class IAB_Node(object):
             self.radar_tag_table = {}
             self.backwardspacket = {}
             self.forwardspaceket = {}
+            #self.env.process(self.start_radar_routing())
 
         if self.algorithm == 'q':
             self.time_stamp_table = {}
@@ -110,7 +111,7 @@ class IAB_Node(object):
                 if src_host_id not in router_tag_table or router_tag_table[
                     src_host_id] < tag:  ## the radar message come here first time or need to update the information
                     router_tag_table[src_host_id] = tag
-                    self.backwardspacket[src_host_id] = source_id
+                    self.backwardspacket[src_host_id] = (source_id, tag)
                     self.send_to_all_expect(packet, source_id)
 
         elif packet.head == 'e':
@@ -119,9 +120,12 @@ class IAB_Node(object):
                 router_tag_table = self.radar_tag_table
                 tag = packet.tag
                 if dest_host_id in router_tag_table and router_tag_table[dest_host_id] == tag:
-                    self.forwardspaceket[packet.src_host_id] = source_id
-                    packet.add_path(self.node_id)
-                    self.send(self.backwardspacket[dest_host_id], packet)
+                    if dest_host_id in self.forwardspaceket and self.forwardspaceket[dest_host_id][1] == tag:
+                        pass
+                    else:
+                        self.forwardspaceket[dest_host_id] = (source_id, tag)
+                        packet.add_path(self.node_id)
+                        self.send(self.backwardspacket[dest_host_id][0], packet)
 
         elif packet.head == 'd':
             if packet.src_host_id not in list(self.adj_ues.keys()):
@@ -129,7 +133,7 @@ class IAB_Node(object):
             if packet.src_node_id == None:
                 packet.src_node_id = self.node_id
             if self.algorithm == 'dijkstra':
-                self.send(self.search_next_jump_forward(packet.dest_host_id), packet)
+                self.send(self.search_next_jump_forward(packet.src_host_id), packet)
             elif self.algorithm == 'q':
                 action = self.get_action()
                 key = (packet.packet_no, packet.flow_id)
@@ -194,14 +198,14 @@ class IAB_Node(object):
 
     def search_next_jump_forward(self, dest_id):
         if dest_id in self.forwardspaceket:
-            return self.forwardspaceket[dest_id]
+            return self.forwardspaceket[dest_id][0]
         else:
             raise Exception("ERROR: Can not find forwarding path", self.node_id)
             return None
 
     def search_next_jump_backward(self, dest_id):
         if dest_id in self.backwardspacket:
-            return self.backwardspacket[dest_id]
+            return self.backwardspacket[dest_id][0]
         else:
             raise Exception("ERROR: Can not find forwarding path", self.node_id)
             return None
@@ -277,3 +281,12 @@ class IAB_Node(object):
         max_q = max(self.q_routing_table, key=self.q_routing_table.get)
         new_q = reward + self.discount_factor * self.q_routing_table[max_q]
         self.q_routing_table[source_id] += self.learning_rate * (new_q - current_q)
+
+    def start_radar_routing(self):
+        print("EVENT: IAB Node",self.node_id ,"Start Radar Routing at", self.env.now)
+        tag = 0
+        while True:
+            packet = RadarPacket(self.node_id, tag)
+            self.send_to_all_expect(packet)
+            yield self.env.timeout(5)
+            tag += 1

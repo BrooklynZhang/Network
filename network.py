@@ -56,7 +56,7 @@ def main(filename, algorithm):
             edges_list.append((linelist[0], linelist[1]))
             edges_list.append((linelist[0], linelist[2]))
         elif linelist[0][0] == 'F': #Flow Id / Source / Target / Data(MB) / Start Time
-            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], algorithm, linelist[5])
+            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], linelist[5], linelist[6], algorithm)
             flow_list.append(flow)
         elif linelist[0][0] == 'r':
             running_time = float(linelist[1])
@@ -83,7 +83,9 @@ def main(filename, algorithm):
 
     env.run(until=running_time)
 
-    gui.collecting_data(iabdonor_class, iabnodes_class, ue_class, links_class)
+    gui.collecting_data(args.algorithm, iabdonor_class, iabnodes_class, ue_class, links_class)
+
+    print('EVENT: Simulation Finished')
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
