@@ -30,7 +30,7 @@ class EchoPacket(Packet):
 
 
 class DataPacket(Packet):
-    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp, ack):  # src/dest host id, flow id, pack number, time stamp
+    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp, ack, direction):  # src/dest host id, flow id, pack number, time stamp
         self.head = 'd'
         self.src_host_id = src_host_id
         self.src_node_id = None
@@ -41,10 +41,12 @@ class DataPacket(Packet):
         self.size = 1024
         self.ack = ack
         self.link_timestamp = None
+        self.current_timestamp = None
+        self.direction = direction
 
 
 class AckPacket(Packet):
-    def __init__(self, src_host_id, dest_host_id, dest_node_id, flow_id, packetnum, timestamp):
+    def __init__(self, src_host_id, dest_host_id, dest_node_id, flow_id, packetnum, timestamp, direction):
         self.head = 'a'
         self.src_host_id = src_host_id
         self.dest_node_id = dest_node_id
@@ -55,6 +57,8 @@ class AckPacket(Packet):
         self.size = 64
         self.reward = 100
         self.link_timestamp = None
+        self.current_timestamp = None
+        self.direction = direction
 
 
 class ForwardAnt(Packet):
@@ -83,3 +87,26 @@ class BackwardAnt(Packet):
         self.size = 64
         self.time_stamp = time
         self.link_timestamp = None
+
+
+class InformationPacket(Packet):
+    def __init__(self, dest_host_id , reward):
+        self.head = 'i'
+        self.dest_host_id = dest_host_id
+        self.reward = reward
+        self.size = 4
+
+
+class HelloPacket(Packet):
+    def __init__(self, ue_id):
+        self.head = 'h'
+        self.ue_id = ue_id
+        self.size = 4
+
+class HelloPacketD(Packet):
+    def __init__(self, donor_id):
+        self.head = 'h-d'
+        self.donor_id = donor_id
+        self.size = 4
+
+

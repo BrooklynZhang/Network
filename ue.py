@@ -1,5 +1,5 @@
 import simpy
-from packet import RadarPacket, EchoPacket, DataPacket, AckPacket
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, HelloPacket, InformationPacket
 from flow import BaseFlow
 from collections import defaultdict
 
@@ -15,12 +15,10 @@ class UE(object):
         self.timetable = defaultdict(int)
         self.data_packet_time = {}
         self.monitor_data_act_time = {}
+        self.env.process(self.get_access_to_iab())
 
         if self.algorithm == 'dijkstra':
             self.env.process(self.start_radar_routing())
-
-        elif self.algorithm == 'q':
-            print('Select Q Learning Algorithm as Routing Algorithm')
 
     def add_flow(self, flow):
         self.flows[flow.flow_id] = flow
@@ -30,6 +28,12 @@ class UE(object):
         if source_id in self.adj_ports:
             raise Exception('ERROR: Duplicate port name')
         self.adj_ports[source_id] = source_port
+
+    def get_access_to_iab(self):
+        while True:
+            packet = HelloPacket(self.ue_id)
+            self.send_to_all_expect(packet)
+            yield self.env.timeout(5)
 
     def receive(self, packet, source_id):
         '''if packet.head == 'r':
@@ -49,9 +53,9 @@ class UE(object):
                     self.timetable[origin_id] = (source_id, tag)
                     print('EVENT: UE Detected a quicker path. The new path to IAB-DONOR is', packet.path)
 
-        elif packet.head == 'd':
-            self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no,
-                                           self.env.now))
+        #elif packet.head == 'd':
+        #    self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no,
+        #                                   self.env.now))
 
         elif packet.head == 'a':
             key = (packet.packet_no, packet.flow_id)
@@ -60,6 +64,13 @@ class UE(object):
             self.monitor_data_act_time[packet.flow_id].append((packet.packet_no, gap_time))
             if packet.packet_no % 500 == 0:
                 print('EVENT: UE', self.ue_id, 'receive the ack packet', packet.packet_no,'response time is', gap_time)
+            '''if self.algorithm == 'q':
+                last_jump_time = packet.current_timestamp
+                if last_jump_time is not None:
+                    reward = self.env.now - last_jump_time
+                    info_packet = InformationPacket(packet.dest_host_id, reward)
+                    self.send(source_id, info_packet)'''
+
 
     def send(self, dest_ports, packet):
         self.adj_ports[dest_ports].receive(packet, self.ue_id)
@@ -87,7 +98,7 @@ class UE(object):
                 if datapacket_id % 500 == 0 or datapacket_id == total_packets:
                     print('EVENT: UE',self.ue_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id)
                 current_time = self.env.now
-                packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack) #src_host_id, dest_host_id, flow_id, packetnum, timestamp
+                packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack, 'up') #src_host_id, dest_host_id, flow_id, packetnum, timestamp
                 key = (datapacket_id, flow.flow_id)
                 self.data_packet_time[key] = current_time
                 self.send_to_dest(packet, flow.dest_id)
@@ -107,3 +118,4 @@ class UE(object):
             self.send_to_all_expect(packet)
             yield self.env.timeout(5)
             tag += 1
+

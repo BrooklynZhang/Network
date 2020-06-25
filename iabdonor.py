@@ -1,5 +1,5 @@
 import simpy
-from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, BackwardAnt, ForwardAnt
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, BackwardAnt, ForwardAnt, InformationPacket, HelloPacketD
 from collections import defaultdict
 
 class IAB_Donor(object):
@@ -13,6 +13,7 @@ class IAB_Donor(object):
         self.monitor_transmission_t = {}
         self.monitor_data_act_time = {}
         self.data_packet_time = {}
+        self.env.process(self.get_access_to_iab())
         # self.env.process(self.start_radar_routing())
 
     def add_flow(self, flow):
@@ -23,6 +24,12 @@ class IAB_Donor(object):
         if source_id in self.adj_ports:
             raise Exception('ERROR: Duplicate port name')
         self.adj_ports[source_id] = source_port
+
+    def get_access_to_iab(self):
+        while True:
+            packet = HelloPacketD(self.donor_id)
+            self.send_to_all_expect(packet)
+            yield self.env.timeout(5)
 
     def receive(self, packet, source_id):
         if packet.head == 'r':
@@ -41,12 +48,18 @@ class IAB_Donor(object):
             if packet.ack == 'y':
                 if self.algorithm in ['q', 'ant', 'dijkstra']:
                     if packet.packet_no % 500 == 0:
-                        print('EVENT: IAB Donor', self.donor_id,'received the data packet from', packet.src_host_id, 'with packet id of', packet.packet_no)
-                self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no, self.env.now))
+                        print('EVENT: IAB Donor', self.donor_id,'received the data packet from', packet.src_host_id, 'with packet id of', packet.packet_no, 'The uplink travel time is',time_gap)
+                self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no, self.env.now, 'down'))
             else:
                 if packet.packet_no % 500 == 0:
                     print('EVENT: IAB Donor', self.donor_id, 'received the data packet from', packet.src_host_id,
                           'with packet id of', packet.packet_no)
+            if self.algorithm == 'q':
+                last_jump_time = packet.current_timestamp
+                if last_jump_time is not None:
+                    reward = self.env.now - last_jump_time
+                    info_packet = InformationPacket(packet.dest_host_id, reward)
+                    self.send(source_id, info_packet)
         elif packet.head == 'a':
             #print('EVENT: IAB Donor', self.donor_id, "send AckPacket to",packet.dest_host_id, 'with last iab of', packet.dest_node_id)
             pass
