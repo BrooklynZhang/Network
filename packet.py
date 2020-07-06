@@ -90,11 +90,14 @@ class BackwardAnt(Packet):
 
 
 class InformationPacket(Packet):
-    def __init__(self, dest_host_id , reward):
+    def __init__(self, dest_host_id , id, reward, flow_id, done = 0):
         self.head = 'i'
+        self.id = id
         self.dest_host_id = dest_host_id
         self.reward = reward
         self.size = 4
+        self.done = done
+        self.flow_id = flow_id
 
 
 class HelloPacket(Packet):
@@ -107,6 +110,12 @@ class HelloPacketD(Packet):
     def __init__(self, donor_id):
         self.head = 'h-d'
         self.donor_id = donor_id
+        self.size = 4
+
+class HelloPacketI(Packet):
+    def __init__(self, iab_id):
+        self.head = 'h-i'
+        self.iab_id = iab_id
         self.size = 4
 
 class level_packet(Packet):

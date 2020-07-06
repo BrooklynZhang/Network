@@ -1,6 +1,5 @@
 import simpy
-from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, ForwardAnt, BackwardAnt, InformationPacket, \
-    level_packet
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, ForwardAnt, BackwardAnt, InformationPacket, level_packet, HelloPacketI
 from dqn_model import INPUT_NN, DQN, ReplayBuffer
 import collections
 import torch
@@ -17,6 +16,7 @@ class IAB_Node(object):
         self.node_id = node_id
         self.adj_ues = {}
         self.adj_ports = {}
+        self.adj_iab = {}
         self.adj_donors = {}
         self.algorithm = algorithm
         self.iab_id_list = []
@@ -49,21 +49,29 @@ class IAB_Node(object):
             self.c = 2
 
         if self.algorithm == 'dqn':
+            self.bufffer_size = int(1e3)
+            self.batch_size = 16
+            self.discount = 0.9
+            self.TAU = 1e-3
+            self.lr = 0.05
+            self.update_freq = 1
+
+            self.epsilon = 0.1
+
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.input_size = 128
-            self.TAU = 1e-3
             self.hidden_size = 128
             self.output_data = 128
             self.output_size = 32
-            self.lr = 0.05
-            self.batch_size = 16
-            self.bufffer_size = 128
+
+            self.actions = []
             self.num_actions_hist = 20
             self.num_future_dest = 20
-            self.epsilon = 0.1
             self.actions_hist = []
             self.neighbor_info = []
             self.packet_queue_dest = collections.deque()
+            self.saved_state_action = {}
+
             self.model_local = None
             self.model_target = None
             self.action_size = None
@@ -130,6 +138,8 @@ class IAB_Node(object):
         self.adj_ports[port].receive(packet, self.node_id)
 
     def exchange_info(self):
+        num_dest = len(self.iab_id_list)
+        self.neighbor_info = [0 for i in range(num_dest)]
         while True:
             packet = level_packet(self.node_id, self.node_usage[1].level)
             self.send_to_all_expect_direct(packet)
@@ -176,8 +186,7 @@ class IAB_Node(object):
     def initialize(self):
         if self.algorithm == 'ant':
             self.env.process(self.start_ant_colony_algorithm())
-        elif self.algorithm == 'dpn':
-            self.generate_neural_network()
+        elif self.algorithm == 'dqn':
             self.env.process(self.exchange_info())
 
     def normalization(self, dest_id):
@@ -197,6 +206,7 @@ class IAB_Node(object):
         if packet.head == 'h-d':
             if packet.donor_id not in list(self.adj_donors.keys()):
                 self.adj_donors[packet.donor_id] = source_id
+
 
         elif packet.head == 'r':
             if self.algorithm == 'dijkstra' or self.algorithm == 'q':
@@ -235,7 +245,7 @@ class IAB_Node(object):
                     self.send(action, packet)
                     if last_jump_time is not None:
                         reward = self.env.now - last_jump_time + self.q_routing_table[packet.dest_host_id][action]
-                        info_packet = InformationPacket(packet.dest_host_id, reward)
+                        info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id)
                         self.send(source_id, info_packet)
                 else:
                     action = self.get_action(packet, source_id)
@@ -244,15 +254,21 @@ class IAB_Node(object):
                 next_port = self.data_ant_select_port(packet.dest_host_id, source_id)
                 self.send(next_port, packet)
             elif self.algorithm == 'dqn':
+                if self.model_local == None:
+                    self.generate_neural_network_agent()
                 state = self.collect_state_information(packet, source_id)
-                action = self.get_action_dqn(state)
+                action_num = self.get_action_dqn(state)
+                action = self.actions[action_num]
+                key = (packet.flow_id, packet.packet_no)
+                self.saved_state_action[key] = [state, action_num]
                 last_jump_time = packet.current_timestamp
                 packet.current_timestamp = self.env.now
                 self.send(action, packet)
                 if last_jump_time is not None:
                     reward = self.env.now - last_jump_time
-                    info_packet = InformationPacket(packet.dest_host_id, reward)
+                    info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id)
                     self.send(source_id, info_packet)
+
         elif packet.head == 'a':
             if self.algorithm == 'dijkstra':
                 self.send(self.search_next_jump_backward(packet.dest_host_id), packet)
@@ -267,7 +283,7 @@ class IAB_Node(object):
                 self.send(action, packet)
                 if packet.current_timestamp is not None:
                     reward = self.env.now - packet.current_timestamp + reward_value
-                    info_packet = InformationPacket(packet.dest_node_id, reward)
+                    info_packet = InformationPacket(packet.dest_node_id, packet.packet_no, reward, packet.flow_id)
                     self.send(source_id, info_packet)
             elif self.algorithm == 'ant':
                 if packet.dest_host_id in list(self.adj_ues.keys()):
@@ -280,7 +296,13 @@ class IAB_Node(object):
             if self.algorithm == 'q':
                 self.updating_q_routing_table(packet, source_id)
             elif self.algorithm == 'dqn':
-                time_gap = packet.reward
+                reward = -1 * packet.reward
+                state_action = self.saved_state_action[(packet.flow_id, packet.id)]
+                state = state_action[0]
+                action = state_action[1]
+                done = packet.done
+                next_state = self.collect_state_information(packet, source_id)
+                self.step(state, action, reward, next_state, done)
 
         elif packet.head == 'f':
             packet.visited.append(self.node_id)
@@ -325,6 +347,8 @@ class IAB_Node(object):
         elif packet.head == 'l':
             pos = self.iab_id_list.index(packet.node_id)
             self.neighbor_info[pos] = packet.level
+            if packet.node_id not in list(self.adj_iab.keys()):
+                self.adj_iab[packet.node_id] = source_id
 
     def search_next_jump_forward(self, dest_id):
         if dest_id in self.forwardspaceket:
@@ -436,53 +460,41 @@ class IAB_Node(object):
         new_q = current_q + self.learning_rate * (reward - current_q)
         self.q_routing_table[packet.dest_host_id][source_id] = new_q
 
-### Functions for DQN
-    def generate_neural_network(self):
+    ### Functions for DQN
+    def generate_neural_network_agent(self):
         num_dest = len(self.iab_id_list)
-        action_size = len(list(self.adj_ports.keys()))
+        self.actions = list(self.adj_iab.values()) + list(self.adj_donors.values())
+        self.action_size = len(self.actions)
         model1 = INPUT_NN(num_dest, self.output_size)
         model2 = INPUT_NN(self.num_actions_hist * num_dest, self.output_size)
         model3 = INPUT_NN(self.num_future_dest * num_dest, self.output_size)
         model4 = INPUT_NN(num_dest, self.output_size)
-        model_local = DQN(self.input_size, self.hidden_size, action_size, model1, model2, model3, model4).to(
+        self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
             self.device)
-        model_target = DQN(self.input_size, self.hidden_size, action_size, model1, model2, model3, model4).to(
+        self.model_target = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
             self.device)
-        self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
-        self.neighbor_info = [0 for i in range(num_dest)]
-        self.model_local = model_local
-        self.model_target = model_target
-        self.action_size = action_size
-        self.optimizer = optim.Adam(model_local.parameters(), lr=self.lr)
+        self.optimizer = optim.Adam(self.model_local.parameters(), lr=self.lr)
         self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
 
-    def collect_state_information(self, packet, source_id):
-        destion = packet.dest_host_id
-        pos = self.iab_id_list.index(destion)
-        destion_list = [0 for i in range(len(self.iab_id_list))]
-        destion_list[pos] = 1
-        action_list = self.actions_hist
-        ## need to modify - Brooklyn
-        future_dest_list = [destion_list for i in range(self.num_future_dest)]
-        neighbor_info_list = self.neighbor_info
-        local_info = [destion_list, action_list, future_dest_list, neighbor_info_list]
-        return local_info
+        self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
+        self.neighbor_info = [0 for i in range(num_dest)]
 
-    def step(self, state, action, reward, next_step, done):
+    def step(self, state, action, reward, next_step, done):  # Learning process for every step
         self.memory.add(state, action, reward, next_step, done)
         if len(self.memory) > self.batch_size:
             experience = self.memory.sample()
             self.learn(experience, 0.99)
 
     def learn(self, experiences, gamma):
-        states, actions, rewards, next_state, done = experiences
+        state0, state1, state2, state3, actions, rewards, next_state0, next_state1, next_state2, next_state3, done = experiences
         criterion = torch.nn.MSELoss()
         self.model_local.train()
         self.model_target.eval()
-        predicted_targets = self.model_local(states).gather(1, actions)
+        for i in range(self.batch_size):
+            predicted_targets = self.model_local(state0, state1, state2, state3).gather(1, actions)
 
         with torch.no_grad():
-            labels_next = self.model_local(next_state).detach().max(1)[0].unsquee
+            labels_next = self.model_target(next_state0, next_state1, next_state2, next_state3).detach().max(1)[0].unsqueeze(1)
 
         labels = rewards + (gamma * labels_next * (1 - done))
         loss = criterion(predicted_targets, labels).to(self.device)
@@ -491,11 +503,27 @@ class IAB_Node(object):
         self.optimizer.step()
         self.soft_update(self.model_local, self.model_target, self.TAU)
 
+    def collect_state_information(self, packet, source_id):
+        destion = packet.dest_host_id
+        pos = self.iab_id_list.index(destion)
+        destion_list = np.array([0 for i in range(len(self.iab_id_list))])
+        destion_list[pos] = 1
+        action_list = np.array(self.actions_hist)
+        action_list = action_list.flatten()
+        ## need to modify - Brooklyn
+        future_dest_list = np.array([destion_list for i in range(self.num_future_dest)])
+        future_dest_list = future_dest_list.flatten()
+        neighbor_info_list = np.array(self.neighbor_info)
+        state = [destion_list, action_list, future_dest_list, neighbor_info_list]
+        for i in range(len(state)):
+            state[i] = torch.from_numpy(state[i]).float().unsqueeze(0).to(self.device)
+        return state
+
     def get_action_dqn(self, state):
-        state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
+        #state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         self.model_local.eval()
         with torch.no_grad():
-            action_values = self.model_local(state)
+            action_values = self.model_local(state[0], state[1], state[2], state[3])
         self.model_local.train()
         if random.random() > self.epsilon:
             return np.argmax(action_values.cpu().data.numpy())

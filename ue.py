@@ -83,7 +83,7 @@ class UE(object):
         if self.algorithm == 'dijkstra':
             next_jump_port = self.timetable[dest_id][0]
             self.send(next_jump_port, packet)
-        elif self.algorithm in ['q', 'ant']:
+        elif self.algorithm in ['q', 'ant', 'dqn']:
             self.send_to_all_expect(packet)
 
     def send_data_packets(self, flow):
@@ -95,7 +95,7 @@ class UE(object):
         time_gamp = flow.oper_time / total_packets
         while flow.num_packets >= 0:
                 if datapacket_id % 500 == 0 or datapacket_id == total_packets:
-                    print('EVENT: UE',self.ue_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id)
+                    print('EVENT: UE',self.ue_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id, 'at', self.env.now)
                 current_time = self.env.now
                 packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack, 'up') #src_host_id, dest_host_id, flow_id, packetnum, timestamp
                 key = (datapacket_id, flow.flow_id)

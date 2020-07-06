@@ -58,7 +58,7 @@ class IAB_Donor(object):
                 last_jump_time = packet.current_timestamp
                 if last_jump_time is not None:
                     reward = self.env.now - last_jump_time
-                    info_packet = InformationPacket(packet.dest_host_id, reward)
+                    info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id, 1)
                     self.send(source_id, info_packet)
         elif packet.head == 'a':
             #print('EVENT: IAB Donor', self.donor_id, "send AckPacket to",packet.dest_host_id, 'with last iab of', packet.dest_node_id)
