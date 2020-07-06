@@ -74,7 +74,7 @@ def make_total_response_time_graph(device_id, device_data_set):
         #y = [data[i][1] for i in range(0, len(data), 10)]
         for j in range(0, len(data) - 5, 5):
             list = [data[i][1] for i in range(j, j + 5)]
-            y.append(np.mean(list))
+            y.append(np.mean(list)/10)
         print(name, np.mean(y))
         ax.plot(x, y, label=name)
     ax.legend()

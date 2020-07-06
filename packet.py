@@ -109,4 +109,11 @@ class HelloPacketD(Packet):
         self.donor_id = donor_id
         self.size = 4
 
+class level_packet(Packet):
+    def __init__(self, node_id, level):
+        self.head = 'l'
+        self.node_id = node_id
+        self.level = level
+        self.size = 4
+
 

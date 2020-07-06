@@ -17,7 +17,7 @@ L4 N3A N2A 12.5 10 1000
 L5 N1A N3A 12.5 10 1000
 
 [Flow_Id][Source][Destination][Size(MB)][Start Time(s)][Require AckPacket]
-F1 U1 D1 2 1 y
+F1 U1 D1 1 1 5 y
 
-running_time 5
+running_time 8
 monitor y
