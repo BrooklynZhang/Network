@@ -5,7 +5,6 @@ import argparse
 import gui
 
 from link import Link
-from packet import DataPacket
 from flow import BaseFlow
 from iabdonor import IAB_Donor
 from iabnode import IAB_Node

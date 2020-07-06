@@ -54,7 +54,7 @@ class IAB_Donor(object):
                 if packet.packet_no % 500 == 0:
                     print('EVENT: IAB Donor', self.donor_id, 'received the data packet from', packet.src_host_id,
                           'with packet id of', packet.packet_no)
-            if self.algorithm == 'q':
+            if self.algorithm == 'q' or self.algorithm == 'dqn':
                 last_jump_time = packet.current_timestamp
                 if last_jump_time is not None:
                     reward = self.env.now - last_jump_time

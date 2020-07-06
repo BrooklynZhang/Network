@@ -1,6 +1,5 @@
 import simpy
 from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, HelloPacket, InformationPacket
-from flow import BaseFlow
 from collections import defaultdict
 
 

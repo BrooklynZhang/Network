@@ -1,6 +1,5 @@
 import simpy
 import collections
-from gui import create_the_graph
 
 class Link(object):
 

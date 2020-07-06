@@ -1,6 +1,5 @@
 import simpy
 from math import ceil
-from packet import DataPacket
 
 class BaseFlow(object):
     def __init__(self, env, flow_id, src_id, dest_id, data_mb, start_s, oper_time, ack, algorithm):

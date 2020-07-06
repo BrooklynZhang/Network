@@ -3,7 +3,7 @@ import pickle
 import argparse
 import numpy as np
 
-algs = ['ant', 'q', 'dijkstra']
+algs = ['ant', 'q', 'dijkstra', 'dqn']
 
 class monitor(object):
     def __init__(self, iab_data, ue_time, link_time, link_usage, link_packet_loss):
