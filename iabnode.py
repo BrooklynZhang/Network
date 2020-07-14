@@ -7,6 +7,7 @@ import torch.optim as optim
 import numpy as np
 import random
 import copy
+from torch.autograd import Variable
 
 
 class IAB_Node(object):
@@ -61,11 +62,10 @@ class IAB_Node(object):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.input_size = 128
             self.hidden_size = 128
-            self.output_data = 128
             self.output_size = 32
 
             self.actions = []
-            self.num_actions_hist = 20
+            self.num_actions_hist = 2000
             self.num_future_dest = 20
             self.actions_hist = []
             self.neighbor_info = []
@@ -73,10 +73,13 @@ class IAB_Node(object):
             self.saved_state_action = {}
 
             self.model_local = None
-            self.model_target = None
             self.action_size = None
             self.optimizer = None
             self.memory = None
+
+            #lstm
+            self.hidden0 = None
+            self.hidden1 = None
 
     def add_packets(self, dest_ports, packet):
         with self.node_usage[0].put(1) as req:
@@ -257,15 +260,19 @@ class IAB_Node(object):
                 if self.model_local == None:
                     self.generate_neural_network_agent()
                 state = self.collect_state_information(packet, source_id)
-                action_num = self.get_action_dqn(state)
+                (action_num, action_list, hidden_state0, hidden_state1) = self.get_action_dqn(state)
+                #print(action_num, action_list, hidden_state)
+                q_value = action_list[action_num]
                 action = self.actions[action_num]
                 key = (packet.flow_id, packet.packet_no)
-                self.saved_state_action[key] = [state, action_num]
+                self.saved_state_action[key] = [state, action_num, hidden_state0, hidden_state1]
                 last_jump_time = packet.current_timestamp
                 packet.current_timestamp = self.env.now
                 self.send(action, packet)
                 if last_jump_time is not None:
-                    reward = self.env.now - last_jump_time
+                    reward = (last_jump_time - self.env.now) + q_value
+                    #if self.node_id == 'N2A' and packet.packet_no % 100 == 0:
+                      #print(reward, packet.packet_no)
                     info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id)
                     self.send(source_id, info_packet)
 
@@ -296,13 +303,16 @@ class IAB_Node(object):
             if self.algorithm == 'q':
                 self.updating_q_routing_table(packet, source_id)
             elif self.algorithm == 'dqn':
-                reward = -1 * packet.reward
+                reward = packet.reward
                 state_action = self.saved_state_action[(packet.flow_id, packet.id)]
                 state = state_action[0]
                 action = state_action[1]
+                hidden_state0 = state_action[2]
+                hidden_state1 = state_action[3]
+                #print(hidden_state)
                 done = packet.done
                 next_state = self.collect_state_information(packet, source_id)
-                self.step(state, action, reward, next_state, done)
+                self.step(state, action, reward, next_state, hidden_state0, hidden_state1, done)
 
         elif packet.head == 'f':
             packet.visited.append(self.node_id)
@@ -462,6 +472,7 @@ class IAB_Node(object):
 
     ### Functions for DQN
     def generate_neural_network_agent(self):
+        print('EVENT:', self.node_id, 'is currently generating neural network')
         num_dest = len(self.iab_id_list)
         self.actions = list(self.adj_iab.values()) + list(self.adj_donors.values())
         self.action_size = len(self.actions)
@@ -471,37 +482,32 @@ class IAB_Node(object):
         model4 = INPUT_NN(num_dest, self.output_size)
         self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
             self.device)
-        self.model_target = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
-            self.device)
-        self.optimizer = optim.Adam(self.model_local.parameters(), lr=self.lr)
+        self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
         self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
-
         self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
         self.neighbor_info = [0 for i in range(num_dest)]
+        self.hidden0 = Variable(torch.zeros(1, 1, self.hidden_size).float())
+        self.hidden1 = Variable(torch.zeros(1, 1, self.hidden_size).float())
 
-    def step(self, state, action, reward, next_step, done):  # Learning process for every step
-        self.memory.add(state, action, reward, next_step, done)
+    def step(self, state, action, reward, next_step, hidden_state0, hidden_state1, done):  # Learning process for every step
+        #print(hidden_state)
+        self.memory.add(state, action, reward, hidden_state0, hidden_state1, next_step, done)
         if len(self.memory) > self.batch_size:
             experience = self.memory.sample()
-            self.learn(experience, 0.99)
+            self.learn(experience, 0.9)
 
     def learn(self, experiences, gamma):
-        state0, state1, state2, state3, actions, rewards, next_state0, next_state1, next_state2, next_state3, done = experiences
-        criterion = torch.nn.MSELoss()
+        state0, state1, state2, state3, actions, rewards, hidden_state0, hidden_state1, next_state0, next_state1, next_state2, next_state3, done = experiences
+        loss_fn = torch.nn.MSELoss()
         self.model_local.train()
-        self.model_target.eval()
-        for i in range(self.batch_size):
-            predicted_targets = self.model_local(state0, state1, state2, state3).gather(1, actions)
+        predicted_targets, hidden = self.model_local(state0, state1, state2, state3, hidden_state0, hidden_state1)
+        predicted_targets = predicted_targets.gather(1, actions)
 
-        with torch.no_grad():
-            labels_next = self.model_target(next_state0, next_state1, next_state2, next_state3).detach().max(1)[0].unsqueeze(1)
-
-        labels = rewards + (gamma * labels_next * (1 - done))
-        loss = criterion(predicted_targets, labels).to(self.device)
+        labels = rewards
+        loss = loss_fn(predicted_targets, labels).to(self.device)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        self.soft_update(self.model_local, self.model_target, self.TAU)
 
     def collect_state_information(self, packet, source_id):
         destion = packet.dest_host_id
@@ -523,14 +529,11 @@ class IAB_Node(object):
         #state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         self.model_local.eval()
         with torch.no_grad():
-            action_values = self.model_local(state[0], state[1], state[2], state[3])
-        self.model_local.train()
+            action_values, (h1, c1) = self.model_local(state[0], state[1], state[2], state[3], self.hidden0, self.hidden1)
+            self.hidden0 = h1
+            self.hidden1 = c1
         if random.random() > self.epsilon:
-            return np.argmax(action_values.cpu().data.numpy())
+            return (np.argmax(action_values.cpu().data.numpy()), action_values.cpu().data.numpy()[0], self.hidden0, self.hidden1)
         else:
-            return random.choice(np.arange(self.action_size))
+            return (random.choice(np.arange(self.action_size)), action_values.cpu().data.numpy()[0], self.hidden0, self.hidden1)
 
-    def soft_update(self, model_local, model_target, tau):
-        for target_param, local_param in zip(model_target.parameters(),
-                                             model_local.parameters()):
-            target_param.data.copy_(tau * local_param.data + (1 - tau) * target_param.data)

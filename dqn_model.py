@@ -16,19 +16,21 @@ class DQN(nn.Module):
         self.model4 = model4
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.lstm = nn.LSTM(hidden_size, hidden_size, 1, batch_first=True)
         self.fc3 = nn.Linear(hidden_size, output_size)
 
-    def forward(self, input0, input1, input2, input3):
+    def forward(self, input0, input1, input2, input3, input4, input5):
         model1 = self.model1(input0)
         model2 = self.model2(input1)
         model3 = self.model3(input2)
         model4 = self.model4(input3)
         model = torch.cat((model1, model2, model3, model4), dim=1)
         x = self.fc1(model)
-        x = self.fc2(F.relu(x))
-        x = self.fc3(F.relu(x))
-        return x
-
+        x = self.fc2(torch.tanh(x))
+        x, (h, c) = self.lstm(torch.tanh(x).unsqueeze(1), (input4, input5))
+        x = self.fc3(x.squeeze(1))
+        x = torch.tanh(x)
+        return x, (h, c)
 
 class INPUT_NN(nn.Module):
     def __init__(self, input_size, output_size):
@@ -51,14 +53,16 @@ class ReplayBuffer(object):
                                                                              "state3",
                                                                              "action",
                                                                              "reward",
+                                                                             "hidden_state0",
+                                                                             "hidden_state1",
                                                                              "next_state0",
                                                                              "next_state1",
                                                                              "next_state2",
                                                                              "next_state3",
                                                                              "done"])
 
-    def add(self, state, action, reward, next_state, done):
-        e = self.experiences(state[0],state[1], state[2],state[3], action, reward, next_state[0], next_state[1], next_state[2], next_state[3], done)
+    def add(self, state, action, reward, hidden_state0, hidden_state1, next_state, done):
+        e = self.experiences(state[0], state[1], state[2], state[3], action, reward, hidden_state0, hidden_state1, next_state[0], next_state[1], next_state[2], next_state[3], done)
         self.memory.append(e)
 
     def sample(self):
@@ -69,22 +73,16 @@ class ReplayBuffer(object):
         states3 = torch.from_numpy(np.vstack([e.state3 for e in experiences if e is not None])).float().to(device)
         actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
+        hidden_state0 = torch.from_numpy(np.vstack([e.hidden_state0[0] for e in experiences if e is not None])).float().to(device)
+        hidden_state0 = hidden_state0.unsqueeze(0)
+        hidden_state1 = torch.from_numpy(np.vstack([e.hidden_state1[0] for e in experiences if e is not None])).float().to(device)
+        hidden_state1 = hidden_state1.unsqueeze(0)
         next_states0 = torch.from_numpy(np.vstack([e.next_state0 for e in experiences if e is not None])).float().to(device)
         next_states1 = torch.from_numpy(np.vstack([e.next_state1 for e in experiences if e is not None])).float().to(device)
         next_states2 = torch.from_numpy(np.vstack([e.next_state2 for e in experiences if e is not None])).float().to(device)
         next_states3 = torch.from_numpy(np.vstack([e.next_state3 for e in experiences if e is not None])).float().to(device)
         dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None])).float().to(device)
-        #states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().to(self.device)
-        #actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).float().to(self.device)
-        #rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(self.device)
-        #next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(self.device)
-        #dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None])).float().to(self.device)
-        #states = torch.stack(states).to(self.device)
-        #actions = torch.stack(actions).to(self.device)
-        #rewards = torch.stack(rewards).to(self.device)
-        #next_states = torch.stack(next_states).to(self.device)
-        #dones = torch.stack(dones).to(self.device)
-        return (states0, states1, states2, states3, actions, rewards, next_states0, next_states1, next_states2, next_states3, dones)
+        return (states0, states1, states2, states3, actions, rewards, hidden_state0, hidden_state1,next_states0, next_states1, next_states2, next_states3, dones)
 
     def __len__(self):
         """Return the current size of internal memory."""
