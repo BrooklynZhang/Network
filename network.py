@@ -3,7 +3,7 @@ import sys
 import argparse
 
 import gui
-
+import collections
 from link import Link
 from flow import BaseFlow
 from iabdonor import IAB_Donor
@@ -18,10 +18,11 @@ def main(filename, algorithm):
     ue_class = []
     links_class = []
     iab_id_list = []
-
+    rate_list = collections.deque()
     devices_list = {}
     edges_list = []
     flow_list = []
+    legacy = 'n'
 
 
     env = simpy.Environment()
@@ -40,7 +41,7 @@ def main(filename, algorithm):
             iab_id_list.append(linelist[0])
             devices_list[linelist[0]] = donor
         elif linelist[0][0] == 'N':
-            node = IAB_Node(env, linelist[0], algorithm)
+            node = IAB_Node(env, linelist[0], algorithm, legacy, filename)
             iab_id_list.append(linelist[0])
             iabnodes_class.append(node)
             devices_list[linelist[0]] = node
@@ -49,7 +50,7 @@ def main(filename, algorithm):
             ue_class.append(ue)
             devices_list[linelist[0]] = ue
         elif linelist[0][0] == 'L':
-            link = Link(env, linelist[0], linelist[3], linelist[4], linelist[5], algorithm)
+            link = Link(env, linelist[0], linelist[3], linelist[4], linelist[5], linelist[6], rate_list, algorithm)
             links_class.append(link)
             devices_list[linelist[0]] = link
             edges_list.append((linelist[0], linelist[1]))
@@ -61,6 +62,13 @@ def main(filename, algorithm):
             running_time = float(linelist[1])
         elif linelist[0][0] == 'm':
             b_monitor = linelist[1]
+        elif linelist[0] == 'T':
+            for i in range(1, len(linelist) - 1):
+                rate_list.append(float(linelist[i]))
+            print('EVENT: Time List is', rate_list)
+        elif linelist[0] == 'legacy':
+            legacy = linelist[1]
+
 
     for elements in edges_list:
         l = devices_list[elements[0]]
@@ -82,7 +90,8 @@ def main(filename, algorithm):
 
     env.run(until=running_time)
 
-    gui.collecting_data(args.algorithm, iabdonor_class, iabnodes_class, ue_class, links_class)
+    gui.collecting_data(args.algorithm, filename, iabdonor_class, iabnodes_class, ue_class, links_class)
+
 
     print('EVENT: Simulation Finished')
 

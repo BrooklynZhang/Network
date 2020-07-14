@@ -1,12 +1,15 @@
 import simpy
 import collections
+from scipy.stats import norm
+from packet import Packetlossinfo, Usage_report
 
 class Link(object):
 
-    def __init__(self, env, link_id, rate, delay, buf_size, algorithm):
+    def __init__(self, env, link_id, rate, delay, buf_size, backhaul, rate_list, algorithm):
         self.env = env
         self.link_id = link_id
         self.rate = float(rate)  # Mbps
+        self.configure_rate = float(rate)
         self.delay = delay  # Milliseconds
         self.buf_size = buf_size  # KB 2^10 Bytes
         self.algorithm = algorithm
@@ -16,13 +19,24 @@ class Link(object):
         self.monitor_packet_loss = {}
         self.buffercable = {}
         self.running_time = 0
+        self.rate_list = rate_list
+        self.backhaul = backhaul
         self.env.process(self.report_packet_loss())
-
+        self.env.process(self.adjust_transmit_rate())
 
     def add_port(self, source_id, source_port):
         self.adj_ports[source_id] = source_port
         self.buffercable[source_id] = BufferedCable(self,
                                                     source_id)  # For each direction, add a bufferedcable to handle the data
+
+    def adjust_transmit_rate(self):
+        while True:
+            num = self.rate_list.popleft()
+            self.rate_list.append(num)
+            num = norm.cdf(num)
+            self.rate = num * self.configure_rate
+            #print("EVENT: Current rate of", self.link_id, "is", self.rate, "(", num*100,")%")
+            yield self.env.timeout(1)
 
     def get_link_id(self):
         return self.link_id
@@ -72,10 +86,14 @@ class Link(object):
         self.monitor_transmission_t[dest_ports].append((self.env.now, time_gap))
         self.adj_ports[dest_ports].receive(packet, self.link_id)
 
+    def send_report(self, info, port):
+        self.adj_ports[port].receive(info, port)
+
     def send_to_all_expect(self, packet, except_id=None):
         for ports in self.adj_ports:
             if except_id is None or ports != except_id:
                 self.send(ports, packet)
+
 
 
 class BufferedCable(object):
@@ -100,6 +118,8 @@ class BufferedCable(object):
 
         self.cable = simpy.Store(self.env)
         self.env.process(self.data_fill_cable())
+        if self.link.backhaul == 'y':
+            self.env.process(self.usage_report())
 
     def add_packet(self, packet):
         self.env.process(self.add_packets(packet))
@@ -114,8 +134,10 @@ class BufferedCable(object):
                 self.monitor_usage.append((self.env.now, self.level[1].level))
             else:
                 if hasattr(packet, 'flow_id'):
-                    # self.packet_loss[packet.flow_id] += 1
-                    self.total_packet_loss += 1
+                    if packet.head == 'd':
+                        info = Packetlossinfo(packet.packet_no, packet.dest_host_id, packet.flow_id)
+                        self.link.send_report(info, self.src_id)
+                        self.total_packet_loss += 1
 
     def data_fill_cable(self):  # Sending Packet Mechanism
         while True:  # Once the Queue has data packet, it will get it and send out.
@@ -134,4 +156,10 @@ class BufferedCable(object):
                                                     # If all the conditions are same, long path will have more latency
 
         self.link.send_to_all_expect(packet, self.src_id)
+
+    def usage_report(self):
+        while True:
+            info = Usage_report(self.link.link_id, self.level[0].level)
+            self.link.send_report(info, self.src_id)
+            yield self.env.timeout(0.1)
 

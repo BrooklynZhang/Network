@@ -8,11 +8,12 @@ import numpy as np
 import random
 import copy
 from torch.autograd import Variable
+import pickle
 
 
 class IAB_Node(object):
 
-    def __init__(self, env, node_id, algorithm):
+    def __init__(self, env, node_id, algorithm, legacy, filename):
         self.env = env
         self.node_id = node_id
         self.adj_ues = {}
@@ -27,6 +28,8 @@ class IAB_Node(object):
             simpy.Container(self.env, capacity=1.0E9)
         )
         self.replay_buffer = []
+        self.legacy = legacy
+        self.filename = filename
 
         if self.algorithm == 'dijkstra':
             self.radar_tag_table = {}
@@ -71,6 +74,8 @@ class IAB_Node(object):
             self.neighbor_info = []
             self.packet_queue_dest = collections.deque()
             self.saved_state_action = {}
+            self.penalty = -10
+            self.adj_link_egree_level = {}
 
             self.model_local = None
             self.action_size = None
@@ -210,7 +215,6 @@ class IAB_Node(object):
             if packet.donor_id not in list(self.adj_donors.keys()):
                 self.adj_donors[packet.donor_id] = source_id
 
-
         elif packet.head == 'r':
             if self.algorithm == 'dijkstra' or self.algorithm == 'q':
                 src_host_id = packet.src_host_id
@@ -314,6 +318,20 @@ class IAB_Node(object):
                 next_state = self.collect_state_information(packet, source_id)
                 self.step(state, action, reward, next_state, hidden_state0, hidden_state1, done)
 
+        elif packet.head == 'p':
+            # print("WARNING: Data Packet",packet.id, "of flow id", packet.flow_id, "is lost")
+            if self.algorithm == 'dqn':
+                reward = self.penalty
+                state_action = self.saved_state_action[(packet.flow_id, packet.id)]
+                state = state_action[0]
+                action = state_action[1]
+                hidden_state0 = state_action[2]
+                hidden_state1 = state_action[3]
+                # print(hidden_state)
+                done = 0
+                next_state = self.collect_state_information(packet, source_id)
+                self.step(state, action, reward, next_state, hidden_state0, hidden_state1, done)
+
         elif packet.head == 'f':
             packet.visited.append(self.node_id)
             if packet.dest_host_id == self.node_id:
@@ -359,6 +377,12 @@ class IAB_Node(object):
             self.neighbor_info[pos] = packet.level
             if packet.node_id not in list(self.adj_iab.keys()):
                 self.adj_iab[packet.node_id] = source_id
+
+        elif packet.head == 'U':
+            if self.algorithm == 'dqn':
+                level = packet.level
+                self.adj_link_egree_level[packet.id] = float(level)
+
 
     def search_next_jump_forward(self, dest_id):
         if dest_id in self.forwardspaceket:
@@ -473,21 +497,37 @@ class IAB_Node(object):
     ### Functions for DQN
     def generate_neural_network_agent(self):
         print('EVENT:', self.node_id, 'is currently generating neural network')
-        num_dest = len(self.iab_id_list)
-        self.actions = list(self.adj_iab.values()) + list(self.adj_donors.values())
-        self.action_size = len(self.actions)
-        model1 = INPUT_NN(num_dest, self.output_size)
-        model2 = INPUT_NN(self.num_actions_hist * num_dest, self.output_size)
-        model3 = INPUT_NN(self.num_future_dest * num_dest, self.output_size)
-        model4 = INPUT_NN(num_dest, self.output_size)
-        self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
-            self.device)
-        self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
-        self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
-        self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
-        self.neighbor_info = [0 for i in range(num_dest)]
-        self.hidden0 = Variable(torch.zeros(1, 1, self.hidden_size).float())
-        self.hidden1 = Variable(torch.zeros(1, 1, self.hidden_size).float())
+        if self.legacy == 'n':
+            num_dest = len(self.iab_id_list)
+            self.actions = list(self.adj_iab.values()) + list(self.adj_donors.values())
+            self.action_size = len(self.actions)
+            model1 = INPUT_NN(num_dest, self.output_size)
+            model2 = INPUT_NN(self.num_actions_hist * num_dest, self.output_size)
+            model3 = INPUT_NN(self.action_size, self.output_size)
+            model4 = INPUT_NN(num_dest, self.output_size)
+            self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
+                self.device)
+            self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
+            self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
+            self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
+            self.neighbor_info = [0 for i in range(num_dest)]
+            self.hidden0 = Variable(torch.zeros(1, 1, self.hidden_size).float())
+            self.hidden1 = Variable(torch.zeros(1, 1, self.hidden_size).float())
+        else:
+            filename = "dqn" + self.filename
+            with open(filename, "rb") as FILE:
+                obj = pickle.loads(FILE.read())
+            self.model_local = obj.models[self.node_id]
+            self.memory = obj.models[self.node_id]
+            num_dest = len(self.iab_id_list)
+            self.actions = list(self.adj_iab.values()) + list(self.adj_donors.values())
+            self.action_size = len(self.actions)
+            self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
+            self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
+            self.neighbor_info = [0 for i in range(num_dest)]
+            self.hidden0 = Variable(torch.zeros(1, 1, self.hidden_size).float())
+            self.hidden1 = Variable(torch.zeros(1, 1, self.hidden_size).float())
+
 
     def step(self, state, action, reward, next_step, hidden_state0, hidden_state1, done):  # Learning process for every step
         #print(hidden_state)
@@ -517,8 +557,7 @@ class IAB_Node(object):
         action_list = np.array(self.actions_hist)
         action_list = action_list.flatten()
         ## need to modify - Brooklyn
-        future_dest_list = np.array([destion_list for i in range(self.num_future_dest)])
-        future_dest_list = future_dest_list.flatten()
+        future_dest_list = np.array(list(self.adj_link_egree_level.values()))
         neighbor_info_list = np.array(self.neighbor_info)
         state = [destion_list, action_list, future_dest_list, neighbor_info_list]
         for i in range(len(state)):

@@ -106,17 +106,21 @@ class HelloPacket(Packet):
         self.ue_id = ue_id
         self.size = 4
 
+
 class HelloPacketD(Packet):
     def __init__(self, donor_id):
         self.head = 'h-d'
         self.donor_id = donor_id
         self.size = 4
 
+
 class HelloPacketI(Packet):
-    def __init__(self, iab_id):
+    def __init__(self, iab_id, time):
         self.head = 'h-i'
         self.iab_id = iab_id
+        self.time_stamp = time
         self.size = 4
+
 
 class level_packet(Packet):
     def __init__(self, node_id, level):
@@ -126,3 +130,16 @@ class level_packet(Packet):
         self.size = 4
 
 
+class Packetlossinfo(Packet):
+    def __init__(self, node_id, dest_host_id, flow_id):
+        self.head = 'p'
+        self.id = node_id
+        self.flow_id = flow_id
+        self.dest_host_id = dest_host_id
+        self.size = 4
+
+class Usage_report(Packet):
+    def __init__(self, link_id, level):
+        self.head = 'U'
+        self.id = link_id
+        self.level = level

@@ -13,8 +13,13 @@ class monitor(object):
         self.link_usage = link_usage
         self.link_packet_loss = link_packet_loss
 
+class dqndata(object):
+    def __init__(self, models, memory):
+        self.models = models
+        self.memory = memory
 
-def collecting_data(algorithm, iabdonor_class, iabnodes_class, ue_class, links_class):
+
+def collecting_data(algorithm, test_case, iabdonor_class, iabnodes_class, ue_class, links_class):
     iab_data_dict = {}
     ue_transmit_time = {}
     link_transmit_time = {}
@@ -38,6 +43,21 @@ def collecting_data(algorithm, iabdonor_class, iabnodes_class, ue_class, links_c
     with open(filename, "wb") as FILE:
         FILE.write(object)
     FILE.close()
+
+    models = {}
+    experience_pool = {}
+
+    if algorithm == 'dqn':
+        for iab in iabnodes_class:
+            models[iab.node_id] = iab.model_local
+            experience_pool[iab.node_id] = iab.memory
+        dqn_obj = dqndata(models,experience_pool)
+        dqn_obj = pickle.dumps(dqn_obj)
+        dqnfilename = "dqn" + test_case
+        with open(dqnfilename, "wb") as F:
+            F.write(dqn_obj)
+        F.close()
+
 
 def create_the_graph(link_id, link_dict):
     name_list = list(link_dict.keys())
