@@ -264,6 +264,8 @@ class IAB_Node(object):
             elif self.algorithm == 'genetic':
                 if packet.src_node_id == self.node_id:
                     dest = packet.dest_host_id
+                    if dest not in list(self.table.keys()):
+                        print(self.node_id, self.table)
                     table = self.table[dest]
                     route_list = [route for route, prob in table]
                     prob_list = [prob for route, prob in table]
@@ -459,7 +461,6 @@ class IAB_Node(object):
                 next_node = packet.path.pop(-1)
                 next_port = self.adj_iab[next_node]
                 self.send_direct(next_port, packet)
-
 
     def search_next_jump_forward(self, dest_id):
         if dest_id in self.forwardspaceket:
