@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pickle
 import argparse
 import numpy as np
+import torch
 
 algs = ['ant', 'q', 'dijkstra', 'dqn']
 
@@ -44,19 +45,10 @@ def collecting_data(algorithm, test_case, iabdonor_class, iabnodes_class, ue_cla
         FILE.write(object)
     FILE.close()
 
-    models = {}
-    experience_pool = {}
-
     if algorithm == 'dqn':
         for iab in iabnodes_class:
-            models[iab.node_id] = iab.model_local
-            experience_pool[iab.node_id] = iab.memory
-        dqn_obj = dqndata(models,experience_pool)
-        dqn_obj = pickle.dumps(dqn_obj)
-        dqnfilename = "dqn" + test_case
-        with open(dqnfilename, "wb") as F:
-            F.write(dqn_obj)
-        F.close()
+            state = {'net':iab.model_local.state_dict(), 'opt':iab.optimizer.state_dict()}
+            torch.save(state, iab.node_id + ".pth")
 
 
 def create_the_graph(link_id, link_dict):

@@ -30,7 +30,7 @@ class EchoPacket(Packet):
 
 
 class DataPacket(Packet):
-    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp, ack, direction):  # src/dest host id, flow id, pack number, time stamp
+    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp, ack, direction, route = None):  # src/dest host id, flow id, pack number, time stamp
         self.head = 'd'
         self.src_host_id = src_host_id
         self.src_node_id = None
@@ -43,6 +43,7 @@ class DataPacket(Packet):
         self.link_timestamp = None
         self.current_timestamp = None
         self.direction = direction
+        self.route = route
 
 
 class AckPacket(Packet):
@@ -123,11 +124,14 @@ class HelloPacketI(Packet):
 
 
 class level_packet(Packet):
-    def __init__(self, node_id, level):
+    def __init__(self, node_id, level, jump=0):
         self.head = 'l'
         self.node_id = node_id
         self.level = level
         self.size = 4
+
+    def setjump(self, newjump):
+        self.jump = newjump
 
 
 class Packetlossinfo(Packet):
@@ -143,3 +147,24 @@ class Usage_report(Packet):
         self.head = 'U'
         self.id = link_id
         self.level = level
+
+class RREQ(Packet):
+    def __init__(self, id, source_id, dest_id, time, tag):
+        self.head = 'RREQ'
+        self.id = id
+        self.source_id = source_id
+        self.dest_id = dest_id
+        self.stack = {source_id: time}
+        self.path = [source_id]
+        self.tag = tag
+        self.size = 4
+
+class RREP(Packet):
+    def __init__(self, source_id, dest_id, time_table, tag, path):
+        self.head = 'RREP'
+        self.source_id = source_id
+        self.dest_id = dest_id
+        self.time_table = time_table
+        self.tag = tag
+        self.size = 4
+        self.path = path

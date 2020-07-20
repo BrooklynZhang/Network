@@ -61,15 +61,18 @@ class Link(object):
         self.env.process(self.monitoring_link_usage())
 
     def receive(self, packet, source_id):
-        if self.algorithm == 'ant':
-            if packet.head == 'f':
-                packet.stack_list.append(self.link_id)
-                packet.visited.append(self.link_id)
-                packet.stack[self.link_id] = self.env.now
-            elif packet.head == 'b':
-                packet.path.pop()
-        packet.link_timestamp = self.env.now
-        self.buffercable[source_id].add_packet(packet)
+        if self.algorithm == 'dqn' and packet.head == 'l':
+            self.send_to_all_expect_direct(packet, source_id)
+        else:
+            if self.algorithm == 'ant':
+                if packet.head == 'f':
+                    packet.stack_list.append(self.link_id)
+                    packet.visited.append(self.link_id)
+                    packet.stack[self.link_id] = self.env.now
+                elif packet.head == 'b':
+                    packet.path.pop()
+            packet.link_timestamp = self.env.now
+            self.buffercable[source_id].add_packet(packet)
 
     def report_packet_loss(self):
         while True:
@@ -93,6 +96,14 @@ class Link(object):
         for ports in self.adj_ports:
             if except_id is None or ports != except_id:
                 self.send(ports, packet)
+
+    def send_to_all_expect_direct(self, packet, except_id=None):
+        for ports in self.adj_ports:
+            if except_id is None or ports != except_id:
+                self.send_direct(ports, packet)
+
+    def send_direct(self, dest_ports, packet):
+        self.adj_ports[dest_ports].receive(packet, self.link_id)
 
 
 
