@@ -129,6 +129,8 @@ class level_packet(Packet):
         self.node_id = node_id
         self.level = level
         self.size = 4
+        self.jump = jump
+        self.tag = 0
 
     def setjump(self, newjump):
         self.jump = newjump
@@ -143,10 +145,12 @@ class Packetlossinfo(Packet):
         self.size = 4
 
 class Usage_report(Packet):
-    def __init__(self, link_id, level):
+    def __init__(self, link_id, level, tag):
         self.head = 'U'
         self.id = link_id
         self.level = level
+        self.jump = 6
+        self.tag = tag
 
 class RREQ(Packet):
     def __init__(self, id, source_id, dest_id, time, tag):

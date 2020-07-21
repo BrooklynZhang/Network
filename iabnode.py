@@ -41,6 +41,7 @@ class IAB_Node(object):
             self.q_routing_table = {}
             self.learning_rate = 0.1
             self.epsilon = 0.1
+            self.penalty = -10
 
         if self.algorithm == 'ant':
             self.threshold = float(0.0)
@@ -70,11 +71,11 @@ class IAB_Node(object):
             self.actions = []
             self.num_actions_hist = 2000
             self.num_future_dest = 20
-            self.actions_hist = []
+            self.actions_hist = collections.deque(maxlen=self.num_actions_hist)
             self.neighbor_info = []
             self.packet_queue_dest = collections.deque()
             self.saved_state_action = {}
-            self.penalty = -10
+            self.penalty = -100
             self.adj_link_egree_level = {}
 
             self.model_local = None
@@ -87,7 +88,7 @@ class IAB_Node(object):
             self.hidden1 = None
 
         elif self.algorithm == 'genetic':
-            self.rreq_num = 20
+            self.rreq_num = 200
             self.table = {}
 
     def add_packets(self, dest_ports, packet):
@@ -150,11 +151,13 @@ class IAB_Node(object):
         self.adj_ports[port].receive(packet, self.node_id)
 
     def exchange_info(self):
+        yield self.env.timeout(0.1)
         num_dest = len(self.iab_id_list)
         self.neighbor_info = [0 for i in range(num_dest)]
         while True:
-            yield self.env.timeout(0.05)
-            packet = level_packet(self.node_id, self.node_usage[1].level)
+            yield self.env.timeout(0.005)
+            level = sum(list(self.adj_link_egree_level.values()))
+            packet = level_packet(self.node_id, level)
             self.send_to_all_expect_direct(packet)
 
     def generate_q_routing_table(self, state, packet, source_id):
@@ -205,6 +208,7 @@ class IAB_Node(object):
         if self.algorithm == 'ant':
             self.env.process(self.start_ant_colony_algorithm())
         elif self.algorithm == 'dqn':
+            self.env.process(self.hello_packet())
             self.env.process(self.exchange_info())
         elif self.algorithm == 'genetic':
             self.env.process(self.hello_packet())
@@ -231,6 +235,13 @@ class IAB_Node(object):
         if packet.head == 'h-d':
             if packet.donor_id not in list(self.adj_donors.keys()):
                 self.adj_donors[packet.donor_id] = source_id
+
+        elif packet.head == 'l':
+          pos = self.iab_id_list.index(packet.node_id)
+          self.neighbor_info[pos] = packet.level
+          if packet.jump < 5:
+              packet.jump += 1
+              self.send_to_all_expect_direct(packet, source_id)
 
         elif packet.head == 'r':
             if self.algorithm == 'dijkstra' or self.algorithm == 'q':
@@ -267,10 +278,17 @@ class IAB_Node(object):
                     if dest not in list(self.table.keys()):
                         print(self.node_id, self.table)
                     table = self.table[dest]
+                    if table == []:
+                        print("ERROR Table")
                     route_list = [route for route, prob in table]
                     prob_list = [prob for route, prob in table]
-                    selected_route_list = np.random.choice(route_list, 1, p=prob_list)
-                    selected_route = selected_route_list[0]
+                    if len(prob_list) == 1:
+                        selected_route = route_list[0]
+                    else:
+                        if prob_list == [] or route_list == []:
+                            print("ERROR")
+                        selected_route_list = np.random.choice(route_list, 1, p=prob_list)
+                        selected_route = selected_route_list[0]
                     next_node = selected_route[1]
                     if next_node in list(self.adj_iab.keys()):
                         packet.route = selected_route[2:]
@@ -312,6 +330,7 @@ class IAB_Node(object):
                 state = self.collect_state_information(packet, source_id)
                 (action_num, action_list, hidden_state0, hidden_state1) = self.get_action_dqn(state)
                 #print(action_num, action_list, hidden_state)
+                self.actions_hist.append(action_num)
                 q_value = action_list[action_num]
                 action = self.actions[action_num]
                 key = (packet.flow_id, packet.packet_no)
@@ -420,15 +439,6 @@ class IAB_Node(object):
                 next_port = packet.path.pop()
                 self.send(next_port, packet)
 
-        elif packet.head == 'l':
-            if packet.node_id == self.node_id:
-                pass
-            else:
-                pos = self.iab_id_list.index(packet.node_id)
-                self.neighbor_info[pos] = packet.level
-                if packet.node_id not in list(self.adj_iab.keys()):
-                    self.adj_iab[packet.node_id] = source_id
-
         elif packet.head == 'U':
             if self.algorithm == 'dqn':
                 level = packet.level
@@ -455,7 +465,9 @@ class IAB_Node(object):
                     self.send(next_port, packet)
 
         elif packet.head == 'RREP':
+
             if packet.dest_id == self.node_id:
+                print(self.node_id, packet.time_table)
                 self.table[packet.source_id] = packet.time_table
             else:
                 next_node = packet.path.pop(-1)
@@ -533,12 +545,12 @@ class IAB_Node(object):
             for dest in self.iab_id_list:
                 if dest == 'D1':
                     id = 0
-                    while id < 20:
+                    while id < 200:
                         rreq_packet = RREQ(id, self.node_id, dest, self.env.now, tag)
                         next_port_id = np.random.choice(list(self.adj_iab.values()), 1)
                         self.send(next_port_id[0], rreq_packet)
                         id += 1
-            yield self.env.timeout(5)
+            yield self.env.timeout(3)
             tag += 1
 
     def start_radar_routing(self):
@@ -588,7 +600,7 @@ class IAB_Node(object):
         self.q_routing_table[packet.dest_host_id][source_id] = new_q
 
     def updating_q_routing_table_penalty(self, packet, source_id):
-        reward = -1*self.penalty
+        reward = self.penalty
         current_q = self.q_routing_table[packet.dest_host_id][source_id]
         new_q = current_q + self.learning_rate * (reward - current_q)
         self.q_routing_table[packet.dest_host_id][source_id] = new_q
@@ -601,15 +613,15 @@ class IAB_Node(object):
             self.actions = list(self.adj_iab.values()) + list(self.adj_donors.values())
             self.action_size = len(self.actions)
             model1 = INPUT_NN(num_dest, self.output_size)
-            model2 = INPUT_NN(self.num_actions_hist * num_dest, self.output_size)
+            model2 = INPUT_NN(self.num_actions_hist, self.output_size)
             model3 = INPUT_NN(self.action_size, self.output_size)
             model4 = INPUT_NN(num_dest, self.output_size)
             self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
                 self.device)
             self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
             self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
-            self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
-            self.neighbor_info = [0 for i in range(num_dest)]
+            for j in range(self.num_actions_hist):
+                self.actions_hist.append(0)
             self.hidden0 = Variable(torch.zeros(1, 1, self.hidden_size).float())
             self.hidden1 = Variable(torch.zeros(1, 1, self.hidden_size).float())
         else:
@@ -617,7 +629,7 @@ class IAB_Node(object):
             self.actions = list(self.adj_iab.values()) + list(self.adj_donors.values())
             self.action_size = len(self.actions)
             model1 = INPUT_NN(num_dest, self.output_size)
-            model2 = INPUT_NN(self.num_actions_hist * num_dest, self.output_size)
+            model2 = INPUT_NN(self.num_actions_hist, self.output_size)
             model3 = INPUT_NN(self.action_size, self.output_size)
             model4 = INPUT_NN(num_dest, self.output_size)
             self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3,
@@ -625,8 +637,8 @@ class IAB_Node(object):
                 self.device)
             self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
             self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
-            self.actions_hist = [[0 for i in range(num_dest)] for j in range(self.num_actions_hist)]
-            self.neighbor_info = [0 for i in range(num_dest)]
+            for j in range(self.num_actions_hist):
+                self.actions_hist.append(0)
             self.hidden0 = Variable(torch.zeros(1, 1, self.hidden_size).float())
             self.hidden1 = Variable(torch.zeros(1, 1, self.hidden_size).float())
             filename = self.node_id + ".pth"
@@ -661,11 +673,10 @@ class IAB_Node(object):
         destion_list = np.array([0 for i in range(len(self.iab_id_list))])
         destion_list[pos] = 1
         action_list = np.array(self.actions_hist)
-        action_list = action_list.flatten()
         ## need to modify - Brooklyn
-        future_dest_list = np.array(list(self.adj_link_egree_level.values()))
+        egree_link_state = np.array(list(self.adj_link_egree_level.values()))
         neighbor_info_list = np.array(self.neighbor_info)
-        state = [destion_list, action_list, future_dest_list, neighbor_info_list]
+        state = [destion_list, action_list, egree_link_state, neighbor_info_list]
         for i in range(len(state)):
             state[i] = torch.from_numpy(state[i]).float().unsqueeze(0).to(self.device)
         return state

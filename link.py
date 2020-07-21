@@ -61,8 +61,12 @@ class Link(object):
         self.env.process(self.monitoring_link_usage())
 
     def receive(self, packet, source_id):
-        if self.algorithm == 'dqn' and packet.head == 'l':
-            self.send_to_all_expect_direct(packet, source_id)
+        if self.algorithm == 'dqn':
+            if packet.head == 'l' or packet.head == 'i':
+                self.send_to_all_expect_direct(packet, source_id)
+            else:
+                packet.link_timestamp = self.env.now
+                self.buffercable[source_id].add_packet(packet)
         else:
             if self.algorithm == 'ant':
                 if packet.head == 'f':
@@ -169,8 +173,10 @@ class BufferedCable(object):
         self.link.send_to_all_expect(packet, self.src_id)
 
     def usage_report(self):
+        tag = 0
         while True:
-            info = Usage_report(self.link.link_id, self.level[0].level)
+            info = Usage_report(self.link.link_id, self.level[0].level, tag)
             self.link.send_report(info, self.src_id)
-            yield self.env.timeout(0.1)
+            yield self.env.timeout(0.005)
+            tag += 1
 
