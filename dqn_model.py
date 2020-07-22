@@ -26,10 +26,11 @@ class DQN(nn.Module):
         model4 = self.model4(input3)
         model = torch.cat((model1, model2, model3, model4), dim=1)
         x = self.fc1(model)
-        x = self.fc2(torch.tanh(x))
-        x, (h, c) = self.lstm(torch.tanh(x).unsqueeze(1), (input4, input5))
+        x = self.fc2(torch.sigmoid(x))
+        x, (h, c) = self.lstm(torch.sigmoid(x).unsqueeze(1), (input4, input5))
         x = self.fc3(x.squeeze(1))
-        x = torch.tanh(x)
+        x = torch.sigmoid(x)
+        x = torch.neg(x)
         return x, (h, c)
 
 class INPUT_NN(nn.Module):

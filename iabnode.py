@@ -1,5 +1,6 @@
 import simpy
-from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, ForwardAnt, BackwardAnt, InformationPacket, level_packet, HelloPacketI, RREQ
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, ForwardAnt, BackwardAnt, InformationPacket, \
+    level_packet, HelloPacketI, RREQ
 from dqn_model import INPUT_NN, DQN, ReplayBuffer
 import collections
 import torch
@@ -55,7 +56,7 @@ class IAB_Node(object):
 
         if self.algorithm == 'dqn':
             self.bufffer_size = int(1e3)
-            self.batch_size = 16
+            self.batch_size = 64
             self.discount = 0.9
             self.TAU = 1e-3
             self.lr = 0.05
@@ -75,7 +76,7 @@ class IAB_Node(object):
             self.neighbor_info = []
             self.packet_queue_dest = collections.deque()
             self.saved_state_action = {}
-            self.penalty = -100
+            self.penalty = -10
             self.adj_link_egree_level = {}
 
             self.model_local = None
@@ -83,12 +84,15 @@ class IAB_Node(object):
             self.optimizer = None
             self.memory = None
 
-            #lstm
+            # lstm
             self.hidden0 = None
             self.hidden1 = None
 
         elif self.algorithm == 'genetic':
             self.rreq_num = 200
+            self.table = {}
+
+        elif self.algorithm == 'pso':
             self.table = {}
 
     def add_packets(self, dest_ports, packet):
@@ -237,11 +241,11 @@ class IAB_Node(object):
                 self.adj_donors[packet.donor_id] = source_id
 
         elif packet.head == 'l':
-          pos = self.iab_id_list.index(packet.node_id)
-          self.neighbor_info[pos] = packet.level
-          if packet.jump < 5:
-              packet.jump += 1
-              self.send_to_all_expect_direct(packet, source_id)
+            pos = self.iab_id_list.index(packet.node_id)
+            self.neighbor_info[pos] = packet.level
+            if packet.jump < 5:
+                packet.jump += 1
+                self.send_to_all_expect_direct(packet, source_id)
 
         elif packet.head == 'r':
             if self.algorithm == 'dijkstra' or self.algorithm == 'q':
@@ -321,15 +325,19 @@ class IAB_Node(object):
                 else:
                     action = self.get_action(packet, source_id)
                     self.send(action, packet)
+
             elif self.algorithm == 'ant':
                 next_port = self.data_ant_select_port(packet.dest_host_id, source_id)
                 self.send(next_port, packet)
+
             elif self.algorithm == 'dqn':
                 if self.model_local == None:
                     self.generate_neural_network_agent()
                 state = self.collect_state_information(packet, source_id)
                 (action_num, action_list, hidden_state0, hidden_state1) = self.get_action_dqn(state)
-                #print(action_num, action_list, hidden_state)
+                #if self.node_id == 'N3A' and packet.packet_no % 10 == 0:
+                #    print(action_num, action_list)
+
                 self.actions_hist.append(action_num)
                 q_value = action_list[action_num]
                 action = self.actions[action_num]
@@ -340,8 +348,8 @@ class IAB_Node(object):
                 self.send(action, packet)
                 if last_jump_time is not None:
                     reward = (last_jump_time - self.env.now) + q_value
-                    #if self.node_id == 'N2A' and packet.packet_no % 100 == 0:
-                      #print(reward, packet.packet_no)
+                    # if self.node_id == 'N2A' and packet.packet_no % 100 == 0:
+                    # print(reward, packet.packet_no)
                     info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id)
                     self.send(source_id, info_packet)
 
@@ -378,7 +386,7 @@ class IAB_Node(object):
                 action = state_action[1]
                 hidden_state0 = state_action[2]
                 hidden_state1 = state_action[3]
-                #print(hidden_state)
+                # print(hidden_state)
                 done = packet.done
                 next_state = self.collect_state_information(packet, source_id)
                 self.step(state, action, reward, next_state, hidden_state0, hidden_state1, done)
@@ -396,8 +404,8 @@ class IAB_Node(object):
                 done = 0
                 next_state = self.collect_state_information(packet, source_id)
                 self.step(state, action, reward, next_state, hidden_state0, hidden_state1, done)
-            elif self.algorithm == 'q':
-                self.updating_q_routing_table_penalty(packet, source_id)
+            #elif self.algorithm == 'q':
+                #self.updating_q_routing_table_penalty(packet, source_id)
 
         elif packet.head == 'f':
             packet.visited.append(self.node_id)
@@ -448,7 +456,7 @@ class IAB_Node(object):
             packet.stack[self.node_id] = self.env.now
             packet.path.append(self.node_id)
             if packet.dest_id == self.node_id:
-                pass #Brooklyn implement later
+                pass  # Brooklyn implement later
             else:
                 visited_node = packet.path
                 adj_iab = list(self.adj_iab.keys()) + list(self.adj_donors.keys())
@@ -458,7 +466,7 @@ class IAB_Node(object):
                         avaliable_node.append(iab)
                 if avaliable_node != []:
                     next_node = np.random.choice(avaliable_node, 1)
-                    if next_node in  list(self.adj_iab.keys()):
+                    if next_node in list(self.adj_iab.keys()):
                         next_port = self.adj_iab[next_node[0]]
                     else:
                         next_port = self.adj_donors[next_node[0]]
@@ -616,9 +624,10 @@ class IAB_Node(object):
             model2 = INPUT_NN(self.num_actions_hist, self.output_size)
             model3 = INPUT_NN(self.action_size, self.output_size)
             model4 = INPUT_NN(num_dest, self.output_size)
-            self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3, model4).to(
+            self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3,
+                                   model4).to(
                 self.device)
-            self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
+            self.optimizer = optim.Adagrad(self.model_local.parameters(), lr=0.02)
             self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
             for j in range(self.num_actions_hist):
                 self.actions_hist.append(0)
@@ -635,7 +644,7 @@ class IAB_Node(object):
             self.model_local = DQN(self.input_size, self.hidden_size, self.action_size, model1, model2, model3,
                                    model4).to(
                 self.device)
-            self.optimizer = optim.SGD(self.model_local.parameters(), lr=0.2)
+            self.optimizer = optim.Adagrad(self.model_local.parameters(), lr=0.02)
             self.memory = ReplayBuffer(self.action_size, self.bufffer_size, self.batch_size)
             for j in range(self.num_actions_hist):
                 self.actions_hist.append(0)
@@ -646,9 +655,9 @@ class IAB_Node(object):
             self.model_local.load_state_dict(checkpoint['net'])
             self.optimizer.load_state_dict(checkpoint['opt'])
 
-
-    def step(self, state, action, reward, next_step, hidden_state0, hidden_state1, done):  # Learning process for every step
-        #print(hidden_state)
+    def step(self, state, action, reward, next_step, hidden_state0, hidden_state1,
+             done):  # Learning process for every step
+        # print(hidden_state)
         self.memory.add(state, action, reward, hidden_state0, hidden_state1, next_step, done)
         if len(self.memory) > self.batch_size:
             experience = self.memory.sample()
@@ -682,14 +691,17 @@ class IAB_Node(object):
         return state
 
     def get_action_dqn(self, state):
-        #state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
+        # state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
         self.model_local.eval()
         with torch.no_grad():
-            action_values, (h1, c1) = self.model_local(state[0], state[1], state[2], state[3], self.hidden0, self.hidden1)
+            action_values, (h1, c1) = self.model_local(state[0], state[1], state[2], state[3], self.hidden0,
+                                                       self.hidden1)
             self.hidden0 = h1
             self.hidden1 = c1
         if random.random() > self.epsilon:
-            return (np.argmax(action_values.cpu().data.numpy()), action_values.cpu().data.numpy()[0], self.hidden0, self.hidden1)
+            return (np.argmax(action_values.cpu().data.numpy()), action_values.cpu().data.numpy()[0], self.hidden0,
+                    self.hidden1)
         else:
-            return (random.choice(np.arange(self.action_size)), action_values.cpu().data.numpy()[0], self.hidden0, self.hidden1)
+            return (
+            random.choice(np.arange(self.action_size)), action_values.cpu().data.numpy()[0], self.hidden0, self.hidden1)
 

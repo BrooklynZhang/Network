@@ -87,20 +87,37 @@ class IAB_Donor(object):
                 self.send(next_port, backward_ant)
 
         elif packet.head == 'RREQ':
-            packet.stack[self.donor_id] = self.env.now
-            packet.path.append(self.donor_id)
-            key = (packet.source_id, packet.tag)
-            if packet.dest_id == self.donor_id:
-                self.tag_pool[packet.source_id] = packet.tag
-                if key not in list(self.rreq_pool.keys()):
-                    self.rreq_pool[key] = []
-                    self.rreq_pool[key].append(packet)
-                    self.env.process(self.rreq_destination_process(packet))
-                else:
-                    if packet not in self.rreq_pool[key]:
+            if self.algorithm == 'genetic':
+                packet.stack[self.donor_id] = self.env.now
+                packet.path.append(self.donor_id)
+                key = (packet.source_id, packet.tag)
+                if packet.dest_id == self.donor_id:
+                    self.tag_pool[packet.source_id] = packet.tag
+                    if key not in list(self.rreq_pool.keys()):
+                        self.rreq_pool[key] = []
                         self.rreq_pool[key].append(packet)
-            else:
-                pass
+                        self.env.process(self.rreq_destination_process(packet))
+                    else:
+                        if packet not in self.rreq_pool[key]:
+                            self.rreq_pool[key].append(packet)
+                else:
+                    pass
+            elif self.algorithm == 'pso':
+                packet.stack[self.donor_id] = self.env.now
+                packet.path.append(self.donor_id)
+                key = (packet.source_id, packet.tag)
+                if packet.dest_id == self.donor_id:
+                    if key not in list(self.rreq_pool.keys()):
+                        self.rreq_pool[key] = []
+                        self.rreq_pool[key].append(packet)
+                    else:
+                        if len(self.rreq_pool[key]) < 10:
+                            self.rreq_pool[key].append(packet)
+                        elif len(self.rreq_pool[key]) == 10:
+                            self.rreq_pool[key].append(packet)
+                            self.h_particle_swarm_opt(packet)
+                        else:
+                            pass
 
     def rreq_destination_process(self, first_packet):
         yield self.env.timeout(2)
