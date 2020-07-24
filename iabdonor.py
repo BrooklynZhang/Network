@@ -1,5 +1,5 @@
 import simpy
-from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, BackwardAnt, ForwardAnt, InformationPacket, HelloPacketD, RREP
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, Broadcast, BackwardAnt, ForwardAnt, InformationPacket, HelloPacketD, RREP
 from collections import defaultdict
 
 class IAB_Donor(object):
@@ -15,11 +15,12 @@ class IAB_Donor(object):
         self.monitor_data_act_time = {}
         self.data_packet_time = {}
         self.env.process(self.get_access_to_iab())
-        if self.algorithm == 'genetic':
+        if self.algorithm == 'genetic' or self.algorithm == 'pso':
             self.rreq_pool = {}
             self.population = 1
             self.percentage_m = 0.6
             self.tag_pool = {}
+            self.best_path = {}
         # self.env.process(self.start_radar_routing())
 
     def add_flow(self, flow):
@@ -102,22 +103,49 @@ class IAB_Donor(object):
                             self.rreq_pool[key].append(packet)
                 else:
                     pass
-            elif self.algorithm == 'pso':
-                packet.stack[self.donor_id] = self.env.now
-                packet.path.append(self.donor_id)
-                key = (packet.source_id, packet.tag)
-                if packet.dest_id == self.donor_id:
-                    if key not in list(self.rreq_pool.keys()):
-                        self.rreq_pool[key] = []
-                        self.rreq_pool[key].append(packet)
+        elif packet.head == 'broad':
+            new_stack = packet.stack.copy()
+            new_path = packet.path.copy()
+            new_packet = Broadcast(packet.source_id, packet.dest_id, new_stack, new_path, packet.tag, packet.jump)
+            new_packet.stack[self.donor_id] = self.env.now
+            new_packet.path.append(self.donor_id)
+
+            key = (new_packet.source_id, new_packet.tag)
+            #print(new_packet.path, self.env.now)
+            if new_packet.dest_id == self.donor_id:
+                if key not in list(self.rreq_pool.keys()):
+                    self.rreq_pool[key] = []
+                    self.rreq_pool[key].append(new_packet)
+                else:
+                    if len(self.rreq_pool[key]) < 5:
+                        self.rreq_pool[key].append(new_packet)
+                    elif len(self.rreq_pool[key]) == 5:
+                        self.rreq_pool[key].append(new_packet)
+                        self.h_particle_swarm_opt(new_packet)
                     else:
-                        if len(self.rreq_pool[key]) < 10:
-                            self.rreq_pool[key].append(packet)
-                        elif len(self.rreq_pool[key]) == 10:
-                            self.rreq_pool[key].append(packet)
-                            self.h_particle_swarm_opt(packet)
-                        else:
-                            pass
+                        pass
+
+    def h_particle_swarm_opt(self, trigger_packet):
+        key = (trigger_packet.source_id, trigger_packet.tag)
+        path_list = self.rreq_pool[key][:10]
+        if key not in self.best_path:
+            self.best_path[key] = path_list[0]
+        time_dict = {}
+        packet_dict = {}
+        for i in range(len(path_list)):
+            packet = path_list[i]
+            source_id = packet.source_id
+            total_t = packet.stack[self.donor_id] - packet.stack[source_id]
+            time_dict[i] = total_t
+            packet_dict[i] = packet
+        time_dict_order = sorted(time_dict.items(), key=lambda x: x[1], reverse=False)
+        possible_paths = self.genetic_algorithm(time_dict_order, packet_dict)
+        time_table = self.time_to_prob(possible_paths)
+        returnpath = trigger_packet.path[:-1]
+        next_node = returnpath.pop(-1)
+        rrep_packet = RREP(self.donor_id, packet.source_id, time_table, packet.tag, returnpath)
+        next_port = self.adj_iab[next_node]
+        self.send(next_port, rrep_packet)
 
     def rreq_destination_process(self, first_packet):
         yield self.env.timeout(2)
@@ -151,17 +179,20 @@ class IAB_Donor(object):
         time_gap_list = []
         if sorted_path == []:
           print("ERROR: Sorted Path", paths)
-        min_time = sorted_path[0][1] - 0.001
-        for path, time in sorted_path[1:]:
+        min_time = 5/6 * sorted_path[0][1]
+        for path, time in sorted_path:
             time_gap_list.append(1/(time - min_time))
         norm_list = [float(i)/sum(time_gap_list) for i in time_gap_list]
-        result = [(sorted_path[0][0], 1/2)]
+        result = []
         for i in range(len(norm_list)):
-            result.append((sorted_path[i+1][0], norm_list[i]/2))
+            result.append((sorted_path[i][0], norm_list[i]))
         return result
 
     def genetic_algorithm(self, order_list, packet_dict):
-        num_population = round(self.population * len(order_list))
+        if self.algorithm == 'genetic':
+            num_population = round(self.population * len(order_list))
+        else:
+            num_population = len(order_list)
         population = order_list[:num_population]
         m_percent = round(self.percentage_m * num_population)
         left_size = num_population - m_percent

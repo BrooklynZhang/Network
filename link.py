@@ -22,21 +22,11 @@ class Link(object):
         self.rate_list = rate_list
         self.backhaul = backhaul
         self.env.process(self.report_packet_loss())
-        self.env.process(self.adjust_transmit_rate())
 
     def add_port(self, source_id, source_port):
         self.adj_ports[source_id] = source_port
         self.buffercable[source_id] = BufferedCable(self,
                                                     source_id)  # For each direction, add a bufferedcable to handle the data
-
-    def adjust_transmit_rate(self):
-        while True:
-            num = self.rate_list.popleft()
-            self.rate_list.append(num)
-            num = norm.cdf(num)
-            self.rate = num * self.configure_rate
-            #print("EVENT: Current rate of", self.link_id, "is", self.rate, "(", num*100,")%")
-            yield self.env.timeout(1)
 
     def get_link_id(self):
         return self.link_id
@@ -118,6 +108,8 @@ class BufferedCable(object):
         self.link = link
         self.env = link.env
         self.link_id = link.link_id
+        self.configure_rate = link.configure_rate
+        self.rate_list = link.rate_list
         self.rate = link.rate  # Mbps
         self.delay = float(link.delay)  # Milliseconds
         self.buf_size = 1.0E3 * int(link.buf_size)  # KB to Bytes
@@ -130,9 +122,9 @@ class BufferedCable(object):
             simpy.Container(self.env, capacity=self.buf_size),
             simpy.Container(self.env, capacity=self.buf_size)
         )
-
         self.cable = simpy.Store(self.env)
         self.env.process(self.data_fill_cable())
+        self.env.process(self.adjust_transmit_rate())
         if self.link.backhaul == 'y':
             self.env.process(self.usage_report())
 
@@ -153,6 +145,15 @@ class BufferedCable(object):
                         info = Packetlossinfo(packet.packet_no, packet.dest_host_id, packet.flow_id)
                         self.link.send_report(info, self.src_id)
                         self.total_packet_loss += 1
+
+    def adjust_transmit_rate(self):
+        while True:
+            num = self.rate_list.popleft()
+            self.rate_list.append(num)
+            num = norm.cdf(num)
+            self.rate = num * self.configure_rate
+            # print("EVENT: Current rate of", self.link_id, "is", self.rate, "(", num*100,")%")
+            yield self.env.timeout(1)
 
     def data_fill_cable(self):  # Sending Packet Mechanism
         while True:  # Once the Queue has data packet, it will get it and send out.

@@ -153,7 +153,7 @@ class Usage_report(Packet):
         self.tag = tag
 
 class RREQ(Packet):
-    def __init__(self, id, source_id, dest_id, time, tag):
+    def __init__(self, id, source_id, dest_id, time, tag, jump=10):
         self.head = 'RREQ'
         self.id = id
         self.source_id = source_id
@@ -162,6 +162,18 @@ class RREQ(Packet):
         self.path = [source_id]
         self.tag = tag
         self.size = 4
+        self.jump = jump
+
+class Broadcast(Packet):
+    def __init__(self, source_id, dest_id, stack, path, tag, jump):
+        self.head = 'broad'
+        self.source_id = source_id
+        self.dest_id = dest_id
+        self.stack = stack
+        self.path = path
+        self.tag = tag
+        self.size = 4
+        self.jump = jump
 
 class RREP(Packet):
     def __init__(self, source_id, dest_id, time_table, tag, path):

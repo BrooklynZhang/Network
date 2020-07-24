@@ -1,6 +1,6 @@
 import simpy
 from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, ForwardAnt, BackwardAnt, InformationPacket, \
-    level_packet, HelloPacketI, RREQ
+    level_packet, HelloPacketI, RREQ, Broadcast
 from dqn_model import INPUT_NN, DQN, ReplayBuffer
 import collections
 import torch
@@ -217,6 +217,10 @@ class IAB_Node(object):
         elif self.algorithm == 'genetic':
             self.env.process(self.hello_packet())
             self.env.process(self.start_rreq_route_discovery())
+        elif self.algorithm == 'pso':
+            self.env.process(self.hello_packet())
+            self.env.process(self.start_rreq_route_discovery_pso())
+
 
     def normalization(self, dest_id):
         dest_pheromones_table = copy.deepcopy(self.pheromones_table[dest_id])
@@ -276,7 +280,7 @@ class IAB_Node(object):
                 packet.src_node_id = self.node_id
             if self.algorithm == 'dijkstra':
                 self.send(self.search_next_jump_forward(packet.src_host_id), packet)
-            elif self.algorithm == 'genetic':
+            elif self.algorithm == 'genetic' or self.algorithm == 'pso':
                 if packet.src_node_id == self.node_id:
                     dest = packet.dest_host_id
                     if dest not in list(self.table.keys()):
@@ -453,29 +457,45 @@ class IAB_Node(object):
                 self.adj_link_egree_level[packet.id] = float(level)
 
         elif packet.head == 'RREQ':
-            packet.stack[self.node_id] = self.env.now
-            packet.path.append(self.node_id)
-            if packet.dest_id == self.node_id:
-                pass  # Brooklyn implement later
+            if self.algorithm == 'genetic':
+                packet.stack[self.node_id] = self.env.now
+                packet.path.append(self.node_id)
+                if packet.dest_id == self.node_id:
+                    pass  # Brooklyn implement later
+                else:
+                    visited_node = packet.path
+                    adj_iab = list(self.adj_iab.keys()) + list(self.adj_donors.keys())
+                    avaliable_node = []
+                    for iab in adj_iab:
+                        if iab not in visited_node:
+                            avaliable_node.append(iab)
+                    if avaliable_node != []:
+                        next_node = np.random.choice(avaliable_node, 1)
+                        if next_node in list(self.adj_iab.keys()):
+                            next_port = self.adj_iab[next_node[0]]
+                        else:
+                            next_port = self.adj_donors[next_node[0]]
+                        self.send(next_port, packet)
+        if packet.head == 'broad':
+            if packet.jump == 0:
+                pass
             else:
-                visited_node = packet.path
-                adj_iab = list(self.adj_iab.keys()) + list(self.adj_donors.keys())
-                avaliable_node = []
-                for iab in adj_iab:
-                    if iab not in visited_node:
-                        avaliable_node.append(iab)
-                if avaliable_node != []:
-                    next_node = np.random.choice(avaliable_node, 1)
-                    if next_node in list(self.adj_iab.keys()):
-                        next_port = self.adj_iab[next_node[0]]
+                if self.node_id not in packet.path:
+                    packet.jump -= 1
+                    new_stack = packet.stack.copy()
+                    new_path = packet.path.copy()
+                    new_packet = Broadcast(packet.source_id, packet.dest_id, new_stack, new_path, packet.tag, packet.jump)
+                    new_packet.stack[self.node_id] = self.env.now
+                    new_packet.path.append(self.node_id)
+                    if packet.dest_id == self.node_id:
+                        print("ERROR")
+                        pass  # Same as Donor
                     else:
-                        next_port = self.adj_donors[next_node[0]]
-                    self.send(next_port, packet)
+                        self.send_to_all_expect_direct(new_packet, source_id)
 
         elif packet.head == 'RREP':
 
             if packet.dest_id == self.node_id:
-                print(self.node_id, packet.time_table)
                 self.table[packet.source_id] = packet.time_table
             else:
                 next_node = packet.path.pop(-1)
@@ -558,6 +578,18 @@ class IAB_Node(object):
                         next_port_id = np.random.choice(list(self.adj_iab.values()), 1)
                         self.send(next_port_id[0], rreq_packet)
                         id += 1
+            yield self.env.timeout(3)
+            tag += 1
+
+    def start_rreq_route_discovery_pso(self):
+        yield self.env.timeout(0.1)
+        tag = 0
+        while True:
+            dest = 'D1'
+            broadcast_packet = Broadcast(self.node_id, dest, {}, [], tag, 9)
+            broadcast_packet.stack[self.node_id] = self.env.now
+            broadcast_packet.path.append(self.node_id)
+            self.send_to_all_expect_direct(broadcast_packet)
             yield self.env.timeout(3)
             tag += 1
 
