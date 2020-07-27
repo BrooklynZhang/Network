@@ -56,7 +56,7 @@ def main(filename, algorithm):
             edges_list.append((linelist[0], linelist[1]))
             edges_list.append((linelist[0], linelist[2]))
         elif linelist[0][0] == 'F': #Flow Id / Source / Target / Data(MB) / Start Time
-            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], linelist[5], linelist[6], algorithm)
+            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], linelist[5], linelist[6], linelist[7], algorithm)
             flow_list.append(flow)
         elif linelist[0][0] == 'r':
             running_time = float(linelist[1])

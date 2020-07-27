@@ -30,10 +30,11 @@ class EchoPacket(Packet):
 
 
 class DataPacket(Packet):
-    def __init__(self, src_host_id, dest_host_id, flow_id, packetnum, timestamp, ack, direction, route = None):  # src/dest host id, flow id, pack number, time stamp
+    def __init__(self, src_host_id, dest_host_id, dest_node_id, flow_id, packetnum, timestamp, ack, direction, route = None):  # src/dest host id, flow id, pack number, time stamp
         self.head = 'd'
         self.src_host_id = src_host_id
         self.src_node_id = None
+        self.dest_node_id = dest_node_id
         self.dest_host_id = dest_host_id
         self.flow_id = flow_id
         self.packet_no = packetnum

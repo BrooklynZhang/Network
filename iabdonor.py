@@ -10,6 +10,7 @@ class IAB_Donor(object):
         self.adj_ports = {}
         self.adj_iab = {}
         self.algorithm = algorithm
+        self.flows = {}
         self.timetable = defaultdict(int)
         self.monitor_transmission_t = {}
         self.monitor_data_act_time = {}
@@ -21,7 +22,7 @@ class IAB_Donor(object):
             self.percentage_m = 0.6
             self.tag_pool = {}
             self.best_path = {}
-        # self.env.process(self.start_radar_routing())
+        self.env.process(self.start_radar_routing())
 
     def add_flow(self, flow):
         self.flows[flow.flow_id] = flow
@@ -44,11 +45,19 @@ class IAB_Donor(object):
                 self.adj_iab[packet.iab_id] = source_id
 
         if packet.head == 'r':
-            #print('EVENT: IAB_DONOR', self.donor_id, 'receive the data packet from', packet.src_host_id, 'at', self.env.now)
             self.send(source_id, EchoPacket(self.donor_id, packet.src_host_id, packet.tag))
 
-        elif packet.head == 'e':
-            print('EVENT: IAB_DONOR', self.donor_id, 'receives the Echo packet from', packet.dest_host_id, 'at', self.env.now)
+        if packet.head == 'e':
+            packet.add_path(self.donor_id)
+            tag = packet.tag
+            origin_id = packet.src_host_id
+            if self.timetable[origin_id] == 0:
+                self.timetable[origin_id] = (source_id, tag)
+                print('EVENT: IAB Donor', self.donor_id, 'received the Echo Packet. The path to UE is', packet.path)
+            else:
+                if tag > self.timetable[origin_id][1]:
+                    self.timetable[origin_id] = (source_id, tag)
+                    print('EVENT: IAB Donor Detected a quicker path. The new path to UE is', packet.path)
 
         elif packet.head == 'd':
             time_gap = self.env.now - packet.timestamp
@@ -66,14 +75,19 @@ class IAB_Donor(object):
                     print('EVENT: IAB Donor', self.donor_id, 'received the data packet from', packet.src_host_id,
                           'with packet id of', packet.packet_no)
             if self.algorithm == 'q' or self.algorithm == 'dqn':
-                last_jump_time = packet.current_timestamp
-                if last_jump_time is not None:
-                    if self.algorithm == 'dqn':
-                        reward = last_jump_time - self.env.now
-                    else:
-                        reward =  self.env.now - last_jump_time
-                    info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id, 1)
+                if packet.dest_host_id != self.donor_id:
+                    reward = -10
+                    info_packet = InformationPacket(packet.dest_node_id, packet.packet_no, reward, packet.flow_id)
                     self.send(source_id, info_packet)
+                else:
+                    last_jump_time = packet.current_timestamp
+                    if last_jump_time is not None:
+                        if self.algorithm == 'dqn':
+                            reward = last_jump_time - self.env.now
+                        else:
+                            reward =  self.env.now - last_jump_time
+                        info_packet = InformationPacket(packet.dest_node_id, packet.packet_no, reward, packet.flow_id, 1)
+                        self.send(source_id, info_packet)
         elif packet.head == 'a':
             #print('EVENT: IAB Donor', self.donor_id, "send AckPacket to",packet.dest_host_id, 'with last iab of', packet.dest_node_id)
             pass
@@ -262,7 +276,7 @@ class IAB_Donor(object):
                 if datapacket_id % 500 == 0 or datapacket_id == total_packets:
                     print('EVENT: IAB DONOR',self.donor_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id)
                 current_time = self.env.now
-                packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack) #src_host_id, dest_host_id, flow_id, packetnum, timestamp
+                packet = DataPacket(flow.src_id, flow.dest_id, flow.dest_node_id, flow.flow_id, datapacket_id, current_time, flow.ack, 'down') #src_host_id, dest_host_id, flow_id, packetnum, timestamp
                 key = (datapacket_id, flow.flow_id)
                 self.data_packet_time[key] = current_time
                 self.send_to_dest(packet, flow.dest_id)
@@ -275,11 +289,7 @@ class IAB_Donor(object):
             print('EVENT: All The Data Packet of Flow Id', flow.flow_id, 'Has Been Sent, It Will Have No Ack Packet')
 
     def send_to_dest(self, packet, dest_id):
-        if self.algorithm == 'dijkstra':
-            next_jump_port = self.timetable[dest_id][0]
-            self.send(next_jump_port, packet)
-        elif self.algorithm in ['q', 'ant']:
-            self.send_to_all_expect(packet)
+        self.send_to_all_expect(packet)
 
     def send_to_all_expect(self, packet, except_id=None):
         for ports in self.adj_ports:
@@ -287,9 +297,10 @@ class IAB_Donor(object):
                 self.send(ports, packet)
 
     def start_radar_routing(self):
-        print('EVENT: IAB', self.donor_id, 'Start Radar Routing at', self.env.now)
         tag = 0
         while True:
-            self.send_to_all_expect(RadarPacket(self.donor_id, tag))
+            packet = RadarPacket(self.donor_id, tag)
+            self.send_to_all_expect(packet)
             yield self.env.timeout(5)
             tag += 1
+

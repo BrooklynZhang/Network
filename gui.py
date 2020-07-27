@@ -7,9 +7,10 @@ import torch
 algs = ['ant', 'q', 'dijkstra', 'dqn']
 
 class monitor(object):
-    def __init__(self, iab_data, ue_time, link_time, link_usage, link_packet_loss):
+    def __init__(self, iab_data, ue_time, link_time, link_usage, link_packet_loss, downlink):
         self.iab_donor_data = iab_data
         self.ue_time = ue_time
+        self.ue_downlink_user_data = downlink
         self.link_time = link_time
         self.link_usage = link_usage
         self.link_packet_loss = link_packet_loss
@@ -22,6 +23,7 @@ class dqndata(object):
 
 def collecting_data(algorithm, test_case, iabdonor_class, iabnodes_class, ue_class, links_class):
     iab_data_dict = {}
+    downlink_data_transmit_time = {}
     ue_transmit_time = {}
     link_transmit_time = {}
     link_usage_record = {}
@@ -31,6 +33,10 @@ def collecting_data(algorithm, test_case, iabdonor_class, iabnodes_class, ue_cla
         iab_data_dict[iab_donor.donor_id] = iab_donor.monitor_transmission_t
 
     for ue in ue_class:
+        for key in list(ue.monitor_transmission_t.keys()):
+            downlink_data_transmit_time[key] = ue.monitor_transmission_t[key]
+
+    for ue in ue_class:
         ue_transmit_time[ue.ue_id] = ue.monitor_data_act_time
 
     for link in links_class:
@@ -38,7 +44,7 @@ def collecting_data(algorithm, test_case, iabdonor_class, iabnodes_class, ue_cla
         link_usage_record[link.link_id] = link.monitor_link_usage
         link_packet_loss[link.link_id] = link.monitor_packet_loss
 
-    object = monitor(iab_data_dict, ue_transmit_time, link_transmit_time, link_usage_record, link_packet_loss)
+    object = monitor(iab_data_dict, ue_transmit_time, link_transmit_time, link_usage_record, link_packet_loss, downlink_data_transmit_time)
     object = pickle.dumps(object)
     filename = algorithm + "dataset.txt"
     with open(filename, "wb") as FILE:

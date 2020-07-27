@@ -16,6 +16,8 @@ class UE(object):
         self.monitor_data_act_time = {}
         self.env.process(self.get_access_to_iab())
 
+        self.monitor_transmission_t = {}
+
         if self.algorithm == 'dijkstra':
             self.env.process(self.start_radar_routing())
 
@@ -40,7 +42,7 @@ class UE(object):
             self.send(source_id, EchoPacket(packet.src_host_id, self.ue_id, packet.tag))'''
 
         if packet.head == 'e':
-            print('EVENT: UE', self.ue_id, 'receivess the Echo packet from', packet.src_host_id, 'at', self.env.now)
+            #print('EVENT: UE', self.ue_id, 'receivess the Echo packet from', packet.src_host_id, 'at', self.env.now)
             packet.add_path(self.ue_id)
             tag = packet.tag
             origin_id = packet.src_host_id
@@ -55,6 +57,22 @@ class UE(object):
         #elif packet.head == 'd':
         #    self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no,
         #                                   self.env.now))
+        elif packet.head == 'd':
+            time_gap = self.env.now - packet.timestamp
+            if packet.flow_id in self.monitor_transmission_t:
+                self.monitor_transmission_t[packet.flow_id].append((packet.packet_no, time_gap))
+            else:
+                self.monitor_transmission_t[packet.flow_id] = [(packet.packet_no, time_gap)]
+            if packet.ack == 'y':
+                if self.algorithm in ['q', 'ant', 'dijkstra']:
+                    if packet.packet_no % 500 == 0:
+                        print('EVENT: IAB Donor', self.donor_id,'received the data packet from', packet.src_host_id, 'with packet id of', packet.packet_no, 'The uplink travel time is',time_gap)
+                self.send(source_id, AckPacket(packet.dest_host_id, packet.src_host_id, packet.src_node_id, packet.flow_id, packet.packet_no, self.env.now, 'down'))
+            else:
+                if packet.packet_no % 500 == 0:
+                    print('EVENT: UE', self.ue_id, 'received the data packet from', packet.src_host_id,
+                          'with packet id of', packet.packet_no)
+
 
         elif packet.head == 'a':
             key = (packet.packet_no, packet.flow_id)
@@ -63,12 +81,9 @@ class UE(object):
             self.monitor_data_act_time[packet.flow_id].append((packet.packet_no, gap_time))
             if packet.packet_no % 500 == 0:
                 print('EVENT: UE', self.ue_id, 'receive the ack packet', packet.packet_no,'response time is', gap_time)
-            '''if self.algorithm == 'q':
-                last_jump_time = packet.current_timestamp
-                if last_jump_time is not None:
-                    reward = self.env.now - last_jump_time
-                    info_packet = InformationPacket(packet.dest_host_id, reward)
-                    self.send(source_id, info_packet)'''
+        elif packet.head == 'r':
+            if packet.src_host_id[0] == 'D':
+                self.send(source_id, EchoPacket(self.ue_id, packet.src_host_id, packet.tag))
 
 
     def send(self, dest_ports, packet):
@@ -97,7 +112,7 @@ class UE(object):
                 if datapacket_id % 500 == 0 or datapacket_id == total_packets:
                     print('EVENT: UE',self.ue_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id, 'at', self.env.now)
                 current_time = self.env.now
-                packet = DataPacket(flow.src_id, flow.dest_id, flow.flow_id, datapacket_id, current_time, flow.ack, 'up') #src_host_id, dest_host_id, flow_id, packetnum, timestamp
+                packet = DataPacket(flow.src_id, flow.dest_id, flow.dest_node_id, flow.flow_id, datapacket_id, current_time, flow.ack, 'up') #src_host_id, dest_host_id, flow_id, packetnum, timestamp
                 key = (datapacket_id, flow.flow_id)
                 self.data_packet_time[key] = current_time
                 self.send_to_dest(packet, flow.dest_id)
@@ -112,7 +127,7 @@ class UE(object):
     def start_radar_routing(self):
         tag = 0
         while True:
-            print("EVENT: UE", self.ue_id, "Start Radar Routing at", self.env.now)
+            #print("EVENT: UE", self.ue_id, "Start Radar Routing at", self.env.now)
             packet = RadarPacket(self.ue_id, tag)
             self.send_to_all_expect(packet)
             yield self.env.timeout(5)

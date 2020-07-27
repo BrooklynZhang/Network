@@ -124,7 +124,7 @@ class BufferedCable(object):
         )
         self.cable = simpy.Store(self.env)
         self.env.process(self.data_fill_cable())
-        self.env.process(self.adjust_transmit_rate())
+        #self.env.process(self.adjust_transmit_rate())
         if self.link.backhaul == 'y':
             self.env.process(self.usage_report())
 
@@ -142,7 +142,7 @@ class BufferedCable(object):
             else:
                 if hasattr(packet, 'flow_id'):
                     if packet.head == 'd':
-                        info = Packetlossinfo(packet.packet_no, packet.dest_host_id, packet.flow_id)
+                        info = Packetlossinfo(packet.packet_no, packet.dest_node_id, packet.flow_id)
                         self.link.send_report(info, self.src_id)
                         self.total_packet_loss += 1
 

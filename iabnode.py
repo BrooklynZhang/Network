@@ -34,6 +34,7 @@ class IAB_Node(object):
 
         if self.algorithm == 'dijkstra':
             self.radar_tag_table = {}
+            self.echo_tag_table = {}
             self.backwardspacket = {}
             self.forwardspaceket = {}
             # self.env.process(self.start_radar_routing())
@@ -189,19 +190,6 @@ class IAB_Node(object):
             action = np.random.choice(list(self.q_routing_table[state]))
         return action
 
-    def get_distribute_action(self, packet, source_id):
-        if packet.direction == 'up':
-            state = packet.dest_host_id
-        elif packet.direction == 'down':
-            state = packet.dest_node_id
-        action_dict = self.q_routing_table[state].copy()
-        ports_id_list = list(action_dict.keys())
-        time_list = list(action_dict.values())
-        prob_list = np.copy([1.0 / i for i in time_list])
-        norm_prob = prob_list / prob_list.sum()
-        next_port_id_list = np.random.choice(ports_id_list, 1, p=norm_prob)
-        return next_port_id_list[0]
-
     def hello_packet(self):
         while True:
             packet = HelloPacketI(self.node_id, self.env.now)
@@ -265,21 +253,20 @@ class IAB_Node(object):
         elif packet.head == 'e':
             if self.algorithm == 'dijkstra' or self.algorithm == 'q':
                 dest_host_id = packet.dest_host_id
-                router_tag_table = self.radar_tag_table
+                src_host_id = packet.src_host_id
+                key = (dest_host_id, src_host_id)
+                router_tag_table = self.echo_tag_table
                 tag = packet.tag
-                if dest_host_id in router_tag_table and router_tag_table[dest_host_id] == tag:
-                    if dest_host_id in self.forwardspaceket and self.forwardspaceket[dest_host_id][1] == tag:
-                        pass
-                    else:
-                        self.forwardspaceket[dest_host_id] = (source_id, tag)
-                        packet.add_path(self.node_id)
-                        self.send(self.backwardspacket[dest_host_id][0], packet)
+                if key not in router_tag_table or router_tag_table[key] < tag:
+                    self.forwardspaceket[key] = (source_id, tag)
+                    packet.add_path(self.node_id)
+                    self.send(self.backwardspacket[dest_host_id][0], packet)
 
         elif packet.head == 'd':
             if packet.src_node_id == None:
                 packet.src_node_id = self.node_id
             if self.algorithm == 'dijkstra':
-                self.send(self.search_next_jump_forward(packet.src_host_id), packet)
+                self.send(self.search_next_jump_forward((packet.src_host_id, packet.dest_host_id)), packet)
             elif self.algorithm == 'genetic' or self.algorithm == 'pso':
                 if packet.src_node_id == self.node_id:
                     dest = packet.dest_host_id
@@ -335,27 +322,49 @@ class IAB_Node(object):
                 self.send(next_port, packet)
 
             elif self.algorithm == 'dqn':
-                if self.model_local == None:
-                    self.generate_neural_network_agent()
-                state = self.collect_state_information(packet, source_id)
-                (action_num, action_list, hidden_state0, hidden_state1) = self.get_action_dqn(state)
-                #if self.node_id == 'N3A' and packet.packet_no % 10 == 0:
-                #    print(action_num, action_list)
-
-                self.actions_hist.append(action_num)
-                q_value = action_list[action_num]
-                action = self.actions[action_num]
-                key = (packet.flow_id, packet.packet_no)
-                self.saved_state_action[key] = [state, action_num, hidden_state0, hidden_state1]
-                last_jump_time = packet.current_timestamp
-                packet.current_timestamp = self.env.now
-                self.send(action, packet)
-                if last_jump_time is not None:
-                    reward = (last_jump_time - self.env.now) + q_value
-                    # if self.node_id == 'N2A' and packet.packet_no % 100 == 0:
-                    # print(reward, packet.packet_no)
-                    info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id)
-                    self.send(source_id, info_packet)
+                if packet.direction == 'up':
+                    if self.model_local == None:
+                        self.generate_neural_network_agent()
+                    state = self.collect_state_information(packet, source_id)
+                    (action_num, action_list, hidden_state0, hidden_state1) = self.get_action_dqn(state)
+                    self.actions_hist.append(action_num)
+                    q_value = action_list[action_num]
+                    action = self.actions[action_num]
+                    key = (packet.flow_id, packet.packet_no)
+                    self.saved_state_action[key] = [state, action_num, hidden_state0, hidden_state1]
+                    last_jump_time = packet.current_timestamp
+                    packet.current_timestamp = self.env.now
+                    self.send(action, packet)
+                    if last_jump_time is not None:
+                        reward = (last_jump_time - self.env.now) + q_value
+                        info_packet = InformationPacket(packet.dest_host_id, packet.packet_no, reward, packet.flow_id)
+                        self.send(source_id, info_packet)
+                else:
+                    if packet.dest_host_id in list(self.adj_ues.keys()):
+                        action = self.adj_ues[packet.dest_host_id]
+                        self.send(action, packet)
+                        last_jump_time = packet.current_timestamp
+                        reward = (last_jump_time - self.env.now)
+                        info_packet = InformationPacket(packet.dest_node_id, packet.packet_no, reward, packet.flow_id)
+                        self.send(source_id, info_packet)
+                    else:
+                        if self.model_local == None:
+                            self.generate_neural_network_agent()
+                        state = self.collect_state_information(packet, source_id)
+                        (action_num, action_list, hidden_state0, hidden_state1) = self.get_action_dqn(state)
+                        self.actions_hist.append(action_num)
+                        q_value = action_list[action_num]
+                        action = self.actions[action_num]
+                        key = (packet.flow_id, packet.packet_no)
+                        self.saved_state_action[key] = [state, action_num, hidden_state0, hidden_state1]
+                        last_jump_time = packet.current_timestamp
+                        packet.current_timestamp = self.env.now
+                        self.send(action, packet)
+                        if last_jump_time is not None:
+                            reward = (last_jump_time - self.env.now) + q_value
+                            info_packet = InformationPacket(packet.dest_node_id, packet.packet_no, reward,
+                                                            packet.flow_id)
+                            self.send(source_id, info_packet)
 
         elif packet.head == 'a':
             if self.algorithm == 'dijkstra':
@@ -709,7 +718,10 @@ class IAB_Node(object):
         self.optimizer.step()
 
     def collect_state_information(self, packet, source_id):
-        destion = packet.dest_host_id
+        if packet.head == 'd':
+            destion = packet.dest_node_id
+        else:
+            destion = packet.dest_host_id
         pos = self.iab_id_list.index(destion)
         destion_list = np.array([0 for i in range(len(self.iab_id_list))])
         destion_list[pos] = 1
