@@ -2,11 +2,10 @@ import simpy
 from math import ceil
 
 class BaseFlow(object):
-    def __init__(self, env, flow_id, src_id, dest_id, dest_node_id, data_mb, start_s, oper_time, ack, algorithm):
+    def __init__(self, env, flow_id, src_id, dest_id, data_mb, start_s, oper_time, ack, algorithm):
         self.env = env
         self.flow_id = flow_id
         self.src_id = src_id
-        self.dest_node_id = dest_node_id
         self.dest_id = dest_id
         self.algorithm = algorithm
         self.data_mb = float(data_mb)

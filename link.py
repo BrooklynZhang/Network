@@ -161,7 +161,8 @@ class BufferedCable(object):
             packet = self.packet_queue.popleft()
             self.monitor_usage.append((self.env.now, self.level[1].level))
             yield self.level[1].get(packet.size - 1)
-            yield self.env.timeout(packet.size * 8  # Sending time for each Packet, if the Rate is set to 20 Mbps,
+            if self.link_id != 'L0':
+                yield self.env.timeout(packet.size * 8  # Sending time for each Packet, if the Rate is set to 20 Mbps,
                                    / (self.rate * 1.0E6))  # a empty buffer link needs 0.0004 s to transfer a 1024 B
             # Data Packet
             yield self.level[0].get(packet.size)

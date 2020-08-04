@@ -1,9 +1,7 @@
-import simpy
-from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, Broadcast, BackwardAnt, ForwardAnt, InformationPacket, HelloPacketD, RREP
+from packet import RadarPacket, EchoPacket, DataPacket, AckPacket, Broadcast, BackwardAnt, InformationPacket, HelloPacketD, RREP
 from collections import defaultdict
 
 class IAB_Donor(object):
-
     def __init__(self, env, donor_id, algorithm):
         self.env = env
         self.donor_id = donor_id
@@ -16,13 +14,15 @@ class IAB_Donor(object):
         self.monitor_data_act_time = {}
         self.data_packet_time = {}
         self.env.process(self.get_access_to_iab())
+        self.ue_node_table = {}
         if self.algorithm == 'genetic' or self.algorithm == 'pso':
             self.rreq_pool = {}
             self.population = 1
             self.percentage_m = 0.6
             self.tag_pool = {}
             self.best_path = {}
-        self.env.process(self.start_radar_routing())
+        if self.algorithm == 'dijkstra':
+            self.env.process(self.start_radar_routing())
 
     def add_flow(self, flow):
         self.flows[flow.flow_id] = flow
@@ -40,14 +40,20 @@ class IAB_Donor(object):
             yield self.env.timeout(5)
 
     def receive(self, packet, source_id):
-        if packet.head == 'h-i':
+        if packet.head == 'csr':
+            ue_id = packet.src_host_id
+            node_id = packet.src_node_id
+            print('Event:', ue_id, 'has attached through', node_id)
+            self.ue_node_table[ue_id] = node_id
+
+        elif packet.head == 'h-i':
             if packet.iab_id not in list(self.adj_iab.keys()):
                 self.adj_iab[packet.iab_id] = source_id
 
-        if packet.head == 'r':
+        elif packet.head == 'r':
             self.send(source_id, EchoPacket(self.donor_id, packet.src_host_id, packet.tag))
 
-        if packet.head == 'e':
+        elif packet.head == 'e':
             packet.add_path(self.donor_id)
             tag = packet.tag
             origin_id = packet.src_host_id
@@ -76,7 +82,7 @@ class IAB_Donor(object):
                           'with packet id of', packet.packet_no)
             if self.algorithm == 'q' or self.algorithm == 'dqn':
                 if packet.dest_host_id != self.donor_id:
-                    reward = -10
+                    reward = -100
                     info_packet = InformationPacket(packet.dest_node_id, packet.packet_no, reward, packet.flow_id)
                     self.send(source_id, info_packet)
                 else:
@@ -193,7 +199,7 @@ class IAB_Donor(object):
         time_gap_list = []
         if sorted_path == []:
           print("ERROR: Sorted Path", paths)
-        min_time = 5/6 * sorted_path[0][1]
+        min_time = 1/2 * sorted_path[0][1]
         for path, time in sorted_path:
             time_gap_list.append(1/(time - min_time))
         norm_list = [float(i)/sum(time_gap_list) for i in time_gap_list]
@@ -234,7 +240,6 @@ class IAB_Donor(object):
                         result.append((path, time))
         return result
 
-
     def crossover(self, stack1, stack2):
         stack1nodes = list(stack1.keys())
         stack2nodes = list(stack2.keys())
@@ -256,7 +261,7 @@ class IAB_Donor(object):
                     results.append((newpath2, newtime2))
                 else:
                     results.append((newpath1, newtime1))
-        if results == []:
+        if not results:
             return ([], 0)
         else:
             sortedresult = sorted(results, key=lambda x: x[1], reverse=False)
@@ -272,11 +277,12 @@ class IAB_Donor(object):
         self.monitor_data_act_time[flow.flow_id] = []
         datapacket_id = 0
         time_gamp = flow.oper_time / total_packets
+        dest_node_id = self.ue_node_table[flow.dest_id]
         while flow.num_packets >= 0:
                 if datapacket_id % 500 == 0 or datapacket_id == total_packets:
                     print('EVENT: IAB DONOR',self.donor_id,"Send DataPacket", datapacket_id,'/',total_packets,'to',flow.dest_id)
                 current_time = self.env.now
-                packet = DataPacket(flow.src_id, flow.dest_id, flow.dest_node_id, flow.flow_id, datapacket_id, current_time, flow.ack, 'down') #src_host_id, dest_host_id, flow_id, packetnum, timestamp
+                packet = DataPacket(flow.src_id, flow.dest_id, dest_node_id, flow.flow_id, datapacket_id, current_time, flow.ack, 'down') #src_host_id, dest_host_id, flow_id, packetnum, timestamp
                 key = (datapacket_id, flow.flow_id)
                 self.data_packet_time[key] = current_time
                 self.send_to_dest(packet, flow.dest_id)

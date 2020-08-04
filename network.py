@@ -12,7 +12,7 @@ from ue import UE
 
 
 def main(filename, algorithm):
-
+    node_donor_link = ['L0', 'D1', 'ND1', '1000', '0', '999999999', 'y']
     iabdonor_class = []
     iabnodes_class = []
     ue_class = []
@@ -40,6 +40,11 @@ def main(filename, algorithm):
             iabdonor_class.append(donor)
             iab_id_list.append(linelist[0])
             devices_list[linelist[0]] = donor
+            link = Link(env, node_donor_link[0], node_donor_link[3], node_donor_link[4], node_donor_link[5], node_donor_link[6], rate_list, algorithm)
+            links_class.append(link)
+            devices_list[node_donor_link[0]] = link
+            edges_list.append((node_donor_link[0], node_donor_link[1]))
+            edges_list.append((node_donor_link[0], node_donor_link[2]))
         elif linelist[0][0] == 'N':
             node = IAB_Node(env, linelist[0], algorithm, legacy, filename)
             iab_id_list.append(linelist[0])
@@ -55,20 +60,18 @@ def main(filename, algorithm):
             devices_list[linelist[0]] = link
             edges_list.append((linelist[0], linelist[1]))
             edges_list.append((linelist[0], linelist[2]))
-        elif linelist[0][0] == 'F': #Flow Id / Source / Target / Data(MB) / Start Time
-            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], linelist[5], linelist[6], linelist[7], algorithm)
+        elif linelist[0][0] == 'F':
+            flow = BaseFlow(env, linelist[0], linelist[1], linelist[2], linelist[3], linelist[4], linelist[5], linelist[6], algorithm)
             flow_list.append(flow)
-        elif linelist[0][0] == 'r':
+        elif linelist[0] == 'running_time':
             running_time = float(linelist[1])
-        elif linelist[0][0] == 'm':
+        elif linelist[0] == 'monitor':
             b_monitor = linelist[1]
-        elif linelist[0] == 'T':
+        elif linelist[0] == 'rate_list':
             for i in range(1, len(linelist) - 1):
                 rate_list.append(float(linelist[i]))
-            print('EVENT: Time List is', rate_list)
         elif linelist[0] == 'legacy':
             legacy = linelist[1]
-
 
     for elements in edges_list:
         l = devices_list[elements[0]]
@@ -89,7 +92,6 @@ def main(filename, algorithm):
             l.monitor_process(running_time)
 
     env.run(until=running_time)
-
     gui.collecting_data(args.algorithm, filename, iabdonor_class, iabnodes_class, ue_class, links_class)
 
 

@@ -75,6 +75,7 @@ class ForwardAnt(Packet):
         self.stack_list = []
         self.size = 64
         self.link_timestamp = None
+        self.max_jump = 15
 
 
 class BackwardAnt(Packet):
@@ -185,3 +186,11 @@ class RREP(Packet):
         self.tag = tag
         self.size = 4
         self.path = path
+
+class Create_Session_Request(Packet):
+    def __init__(self, src_host_id, tag):
+        self.head = 'csr'
+        self.src_host_id = src_host_id
+        self.src_node_id = None
+        self.tag = tag
+        self.size = 64
