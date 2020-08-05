@@ -91,7 +91,7 @@ class UE(object):
         if self.algorithm == 'dijkstra':
             next_jump_port = self.timetable[dest_id][0]
             self.send(next_jump_port, packet)
-        elif self.algorithm in ['q', 'ant', 'dqn','genetic','pso']:
+        elif self.algorithm in ['q', 'ant', 'dqn','genetic','hpso']:
             self.send_to_all_expect(packet)
 
     def send_data_packets(self, flow):

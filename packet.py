@@ -75,7 +75,7 @@ class ForwardAnt(Packet):
         self.stack_list = []
         self.size = 64
         self.link_timestamp = None
-        self.max_jump = 15
+        self.max_jump = 8
 
 
 class BackwardAnt(Packet):

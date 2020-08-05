@@ -63,10 +63,18 @@ class Link(object):
                     packet.stack_list.append(self.link_id)
                     packet.visited.append(self.link_id)
                     packet.stack[self.link_id] = self.env.now
+                    packet.link_timestamp = self.env.now
+                    self.buffercable[source_id].add_packet(packet)
                 elif packet.head == 'b':
                     packet.path.pop()
-            packet.link_timestamp = self.env.now
-            self.buffercable[source_id].add_packet(packet)
+                    packet.link_timestamp = self.env.now
+                    self.send_to_all_expect_direct(packet, source_id)
+                else:
+                    packet.link_timestamp = self.env.now
+                    self.buffercable[source_id].add_packet(packet)
+            else:
+                packet.link_timestamp = self.env.now
+                self.buffercable[source_id].add_packet(packet)
 
     def report_packet_loss(self):
         while True:
@@ -161,7 +169,9 @@ class BufferedCable(object):
             packet = self.packet_queue.popleft()
             self.monitor_usage.append((self.env.now, self.level[1].level))
             yield self.level[1].get(packet.size - 1)
-            if self.link_id != 'L0':
+            if self.link_id == 'L0':
+                pass
+            else:
                 yield self.env.timeout(packet.size * 8  # Sending time for each Packet, if the Rate is set to 20 Mbps,
                                    / (self.rate * 1.0E6))  # a empty buffer link needs 0.0004 s to transfer a 1024 B
             # Data Packet

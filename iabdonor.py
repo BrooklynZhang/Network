@@ -15,7 +15,8 @@ class IAB_Donor(object):
         self.data_packet_time = {}
         self.env.process(self.get_access_to_iab())
         self.ue_node_table = {}
-        if self.algorithm == 'genetic' or self.algorithm == 'pso':
+        self.total = 0
+        if self.algorithm == 'genetic' or self.algorithm == 'hpso':
             self.rreq_pool = {}
             self.population = 1
             self.percentage_m = 0.6
@@ -99,7 +100,9 @@ class IAB_Donor(object):
             pass
         elif packet.head == 'f':
             if packet.dest_host_id == self.donor_id:
-                # print('EVENT: IAB Node', self.donor_id, 'received a forward ant from', packet.src_host_id,'at', self.env.now)
+                if packet.src_host_id == 'N3A':
+                    self.total += 1
+                    #print('EVENT: IAB Node', self.donor_id, 'received a forward ant from', packet.src_host_id, packet.packet_no, self.total,'at', self.env.now)
                 foward_path = packet.stack_list
                 next_port = foward_path.pop()
                 stack = packet.stack

@@ -81,7 +81,7 @@ class IAB_Node(object):
             self.hidden0 = None
             self.hidden1 = None
 
-        elif self.algorithm == 'pso' or self.algorithm == 'genetic':
+        elif self.algorithm == 'hpso' or self.algorithm == 'genetic':
             self.table = {}
             self.rreq_pool = {}
             self.population = 1
@@ -350,7 +350,7 @@ class IAB_Node(object):
         elif self.algorithm == 'genetic':
             self.env.process(self.hello_packet())
             self.env.process(self.start_rreq_route_discovery())
-        elif self.algorithm == 'pso':
+        elif self.algorithm == 'hpso':
             self.env.process(self.hello_packet())
             self.env.process(self.start_rreq_route_discovery_pso())
 
@@ -433,7 +433,7 @@ class IAB_Node(object):
                 packet.src_node_id = self.node_id
             if self.algorithm == 'dijkstra':
                 self.send(self.search_next_jump_forward((packet.src_host_id, packet.dest_host_id)), packet)
-            elif self.algorithm == 'genetic' or self.algorithm == 'pso':
+            elif self.algorithm == 'genetic' or self.algorithm == 'hpso':
                 if packet.src_node_id == self.node_id:
                     dest = packet.dest_node_id
                     if dest not in list(self.table.keys()):
@@ -502,12 +502,16 @@ class IAB_Node(object):
                             self.send(source_id, info_packet)
 
             elif self.algorithm == 'ant':
-                if packet.dest_host_id in list(self.adj_ues.keys()):
-                    action = self.adj_ues[packet.dest_host_id]
+                if self.node_id== 'ND1' and packet.dest_host_id == 'D1':
+                    action = self.adj_donors[packet.dest_host_id]
                     self.send(action, packet)
                 else:
-                    next_port = self.data_ant_select_port(packet.dest_node_id, source_id)
-                    self.send(next_port, packet)
+                    if packet.dest_host_id in list(self.adj_ues.keys()):
+                        action = self.adj_ues[packet.dest_host_id]
+                        self.send(action, packet)
+                    else:
+                        next_port = self.data_ant_select_port(packet.dest_node_id, source_id)
+                        self.send(next_port, packet)
 
             elif self.algorithm == 'dqn':
                 if packet.direction == 'up':
@@ -609,7 +613,8 @@ class IAB_Node(object):
                 #self.updating_q_routing_table_penalty(packet, source_id)
 
         elif packet.head == 'f':
-            if packet.max_jump == 0:
+            jump = packet.max_jump
+            if jump == 0:
                 pass
             else:
                 if packet.dest_host_id == self.node_id:
@@ -622,40 +627,35 @@ class IAB_Node(object):
                     self.send(next_port, backward_ant)
                 else:
                     packet.visited.append(self.node_id)
-                    if packet.dest_host_id == self.node_id:
-                        foward_path = packet.stack_list
-                        next_port = foward_path.pop()
-                        stack = packet.stack
-                        stack[self.node_id] = self.env.now
-                        backward_ant = BackwardAnt(self.node_id, packet.src_host_id, foward_path, stack, packet.packet_no,
-                                           packet.tag, self.env.now)
-                        self.send(next_port, backward_ant)
+                    if self.node_id in packet.stack_list:
+                        loc = packet.stack_list.index(self.node_id)
+                        pop_list = packet.stack_list[(loc + 1):]
+                        for e in pop_list:
+                            if e in list(packet.stack.keys()):
+                                del packet.stack[e]
+                        packet.stack_list = packet.stack_list[:loc + 1]
                     else:
-                        if self.node_id in packet.stack_list:
-                            loc = packet.stack_list.index(self.node_id)
-                            pop_list = packet.stack_list[(loc + 1):]
-                            for e in pop_list:
-                                if e in list(packet.stack.keys()):
-                                    del packet.stack[e]
-                            packet.stack_list = packet.stack_list[:loc + 1]
-                        else:
-                            packet.stack_list.append(self.node_id)
-                            if self.node_id in packet.stack:
-                                print('ERROR: Cycle Detected')
-                            packet.stack[self.node_id] = self.env.now
-                        packet.max_jump -= 1
+                        packet.stack_list.append(self.node_id)
+                        packet.stack[self.node_id] = self.env.now
+                    jump -= 1
+                    packet.max_jump -= jump
+                    if self.node_id == 'ND1' and packet.dest_host_id == 'D1':
+                        action = self.adj_donors[packet.dest_host_id]
+                        self.send(action, packet)
+                    else:
                         next_port = self.ant_select_port(packet, source_id)
-
-                    if next_port is not None:
-                        self.send(next_port, packet)
+                        if next_port is not None:
+                            self.send(next_port, packet)
 
         elif packet.head == 'b':
-            self.update_the_trip_list(packet)
-            self.update_the_pheromones(packet, source_id)
-            # if self.node_id == 'N3A':
-            # print('Map improved at',self.env.now, packet.packet_no)
+            if packet.src_host_id[0] == 'D' and self.node_id == 'ND1':
+                pass
+            else:
+                self.update_the_trip_list(packet)
+                self.update_the_pheromones(packet, source_id)
             if packet.dest_host_id == self.node_id:
-                # print('EVENT:', self.node_id, 'receives its backforward ant #', packet.packet_no,'with tag of', packet.tag)
+                #if packet.dest_host_id == 'N3A':
+                    #print('receive the backwardant', packet.packet_no, self.env.now)
                 pass
             else:
                 next_port = packet.path.pop()
@@ -822,7 +822,7 @@ class IAB_Node(object):
         while True:
             id = 0
             while id < self.ants_num:
-                dest_host_id = np.random.choice(self.iab_id_list, 1)
+                dest_host_id = ['D1']#np.random.choice(self.iab_id_list, 1)
                 if dest_host_id[0] != self.node_id:
                     forward_ant_packet = ForwardAnt(self.node_id, dest_host_id[0], id, tag)
                     forward_ant_packet.stack[self.node_id] = self.env.now
@@ -889,7 +889,7 @@ class IAB_Node(object):
         time_gap_list = []
         if sorted_path == []:
           print("ERROR: Sorted Path", paths)
-        min_time = 1/4 * sorted_path[0][1]
+        min_time = 1/2 * sorted_path[0][1]
         for path, time in sorted_path:
             time_gap_list.append(1/(time - min_time))
         norm_list = [float(i)/sum(time_gap_list) for i in time_gap_list]

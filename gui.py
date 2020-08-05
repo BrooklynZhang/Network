@@ -53,8 +53,9 @@ def collecting_data(algorithm, test_case, iabdonor_class, iabnodes_class, ue_cla
 
     if algorithm == 'dqn':
         for iab in iabnodes_class:
-            state = {'net':iab.model_local.state_dict(), 'opt':iab.optimizer.state_dict()}
-            torch.save(state, iab.node_id + ".pth")
+            if iab.model_local is not None:
+                state = {'net':iab.model_local.state_dict(), 'opt':iab.optimizer.state_dict()}
+                torch.save(state, iab.node_id + ".pth")
 
 
 def create_the_graph(link_id, link_dict):
